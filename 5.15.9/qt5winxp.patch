@@ -1,0 +1,2223 @@
+diff -aupr 5.15.9-orig/qtbase/src/corelib/global/qoperatingsystemversion.cpp 5.15.9-x32/qtbase/src/corelib/global/qoperatingsystemversion.cpp
+--- 5.15.9-orig/qtbase/src/corelib/global/qoperatingsystemversion.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/global/qoperatingsystemversion.cpp	1970-01-01 00:00:00 +0000
+@@ -362,6 +362,20 @@ bool QOperatingSystemVersion::isAnyOfTyp
+ }
+ 
+ /*!
++    \variable QOperatingSystemVersion::WindowsXP
++    \brief a version corresponding to Windows XP (version 5.1).
++ */
++const QOperatingSystemVersion QOperatingSystemVersion::WindowsXP =
++    QOperatingSystemVersion(QOperatingSystemVersion::Windows, 5, 1);
++
++/*!
++    \variable QOperatingSystemVersion::WindowsVista
++    \brief a version corresponding to Windows Vista (version 6.0).
++ */
++const QOperatingSystemVersion QOperatingSystemVersion::WindowsVista =
++    QOperatingSystemVersion(QOperatingSystemVersion::Windows, 6, 0);
++
++/*!
+     \variable QOperatingSystemVersion::Windows7
+     \brief a version corresponding to Windows 7 (version 6.1).
+     \since 5.9
+diff -aupr 5.15.9-orig/qtbase/src/corelib/global/qoperatingsystemversion.h 5.15.9-x32/qtbase/src/corelib/global/qoperatingsystemversion.h
+--- 5.15.9-orig/qtbase/src/corelib/global/qoperatingsystemversion.h	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/global/qoperatingsystemversion.h	1970-01-01 00:00:00 +0000
+@@ -60,6 +60,8 @@ public:
+         Android
+     };
+ 
++    static const QOperatingSystemVersion WindowsXP;
++    static const QOperatingSystemVersion WindowsVista;
+     static const QOperatingSystemVersion Windows7;
+     static const QOperatingSystemVersion Windows8;
+     static const QOperatingSystemVersion Windows8_1;
+@@ -137,14 +139,14 @@ public:
+     friend bool operator<=(const QOperatingSystemVersion &lhs, const QOperatingSystemVersion &rhs)
+     { return lhs.type() == rhs.type() && QOperatingSystemVersion::compare(lhs, rhs) <= 0; }
+ 
++    static int compare(const QOperatingSystemVersion &v1, const QOperatingSystemVersion &v2);
++
+ private:
+     QOperatingSystemVersion() = default;
+     OSType m_os;
+     int m_major;
+     int m_minor;
+     int m_micro;
+-
+-    static int compare(const QOperatingSystemVersion &v1, const QOperatingSystemVersion &v2);
+ };
+ Q_DECLARE_TYPEINFO(QOperatingSystemVersion, QT_VERSION < QT_VERSION_CHECK(6, 0, 0) ? Q_RELOCATABLE_TYPE : Q_PRIMITIVE_TYPE);
+ 
+diff -aupr 5.15.9-orig/qtbase/src/corelib/io/qfilesystemengine_win.cpp 5.15.9-x32/qtbase/src/corelib/io/qfilesystemengine_win.cpp
+--- 5.15.9-orig/qtbase/src/corelib/io/qfilesystemengine_win.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/io/qfilesystemengine_win.cpp	1970-01-01 00:00:00 +0000
+@@ -156,6 +156,11 @@ typedef struct _REPARSE_DATA_BUFFER {
+ #  define QT_FEATURE_fslibs 1
+ #endif // Q_OS_WINRT
+ 
++#ifndef Q_OS_WINRT
++typedef HRESULT (WINAPI *PtrSHCreateItemFromParsingName)(PCWSTR, IBindCtx *, const GUID&, void **);
++static PtrSHCreateItemFromParsingName ptrSHCreateItemFromParsingName = nullptr;
++#endif
++
+ #if QT_CONFIG(fslibs)
+ #include <aclapi.h>
+ #include <userenv.h>
+@@ -673,6 +678,9 @@ typedef struct _FILE_ID_INFO {
+ 
+ #endif // if defined (Q_CC_MINGW) && WINVER < 0x0602
+ 
++// FILE_INFO_BY_HANDLE_CLASS has been extended by FileIdInfo = 18 as of VS2012.
++typedef enum { Q_FileIdInfo = 18 } Q_FILE_INFO_BY_HANDLE_CLASS;
++
+ // File ID for Windows up to version 7 and FAT32 drives
+ static inline QByteArray fileId(HANDLE handle)
+ {
+@@ -697,17 +705,26 @@ static inline QByteArray fileId(HANDLE h
+ QByteArray fileIdWin8(HANDLE handle)
+ {
+ #if !defined(QT_BOOTSTRAPPED) && !defined(QT_BUILD_QMAKE)
++    typedef BOOL (WINAPI* GetFileInformationByHandleExType)(HANDLE, Q_FILE_INFO_BY_HANDLE_CLASS, void *, DWORD);
++
++    // Dynamically resolve  GetFileInformationByHandleEx (Vista onwards).
++    static GetFileInformationByHandleExType getFileInformationByHandleEx = 0;
++    if (!getFileInformationByHandleEx) {
++        QSystemLibrary library(QLatin1String("kernel32"));
++        getFileInformationByHandleEx = (GetFileInformationByHandleExType)library.resolve("GetFileInformationByHandleEx");
++    }
+     QByteArray result;
+-    FILE_ID_INFO infoEx;
+-    if (GetFileInformationByHandleEx(handle,
+-                                     static_cast<FILE_INFO_BY_HANDLE_CLASS>(18), // FileIdInfo in Windows 8
+-                                     &infoEx, sizeof(FILE_ID_INFO))) {
+-        result = QByteArray::number(infoEx.VolumeSerialNumber, 16);
+-        result += ':';
+-        // Note: MinGW-64's definition of FILE_ID_128 differs from the MSVC one.
+-        result += QByteArray(reinterpret_cast<const char *>(&infoEx.FileId), int(sizeof(infoEx.FileId))).toHex();
+-    } else {
+-        result = fileId(handle); // GetFileInformationByHandleEx() is observed to fail for FAT32, QTBUG-74759
++    if (getFileInformationByHandleEx) {
++        FILE_ID_INFO infoEx;
++        if (getFileInformationByHandleEx(handle, Q_FileIdInfo,
++                                         &infoEx, sizeof(FILE_ID_INFO))) {
++            result = QByteArray::number(infoEx.VolumeSerialNumber, 16);
++            result += ':';
++            // Note: MinGW-64's definition of FILE_ID_128 differs from the MSVC one.
++            result += QByteArray((char *)&infoEx.FileId, sizeof(infoEx.FileId)).toHex();
++        }
++        else
++            result = fileId(handle); // GetFileInformationByHandleEx() is observed to fail for FAT32, QTBUG-74759
+     }
+     return result;
+ #else // !QT_BOOTSTRAPPED && !QT_BUILD_QMAKE
+@@ -1555,6 +1572,13 @@ bool QFileSystemEngine::moveFileToTrash(
+     */
+     if (QOperatingSystemVersion::current() > QOperatingSystemVersion::Windows7) {
+ #  if defined(__IFileOperation_INTERFACE_DEFINED__)
++        if (!ptrSHCreateItemFromParsingName) {
++            ptrSHCreateItemFromParsingName = reinterpret_cast<PtrSHCreateItemFromParsingName>(
++                QSystemLibrary::resolve(QLatin1String("shell32"), "ShellExecuteExW"));
++            if (!ptrSHCreateItemFromParsingName)
++                return false;
++        }
++
+         CoInitialize(NULL);
+         IFileOperation *pfo = nullptr;
+         IShellItem *deleteItem = nullptr;
+@@ -1578,8 +1602,7 @@ bool QFileSystemEngine::moveFileToTrash(
+             return false;
+         pfo->SetOperationFlags(FOF_ALLOWUNDO | FOFX_RECYCLEONDELETE | FOF_NOCONFIRMATION
+                             | FOF_SILENT | FOF_NOERRORUI);
+-        hres = SHCreateItemFromParsingName(reinterpret_cast<const wchar_t*>(sourcePath.utf16()),
+-                                        nullptr, IID_PPV_ARGS(&deleteItem));
++        hres = ptrSHCreateItemFromParsingName(reinterpret_cast<const wchar_t*>(sourcePath.utf16()), nullptr, IID_PPV_ARGS(&deleteItem));
+         if (!deleteItem)
+             return false;
+         sink = new FileOperationProgressSink;
+diff -aupr 5.15.9-orig/qtbase/src/corelib/io/qprocess_win.cpp 5.15.9-x32/qtbase/src/corelib/io/qprocess_win.cpp
+--- 5.15.9-orig/qtbase/src/corelib/io/qprocess_win.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/io/qprocess_win.cpp	1970-01-01 00:00:00 +0000
+@@ -53,6 +53,7 @@
+ #include <private/qsystemlibrary_p.h>
+ #include <private/qthread_p.h>
+ #include <qdebug.h>
++#include <qoperatingsystemversion.h>
+ 
+ #include "private/qfsfileengine_p.h" // for longFileName
+ 
+@@ -114,7 +115,11 @@ static void qt_create_pipe(Q_PIPE *pipe,
+             dwOpenMode |= PIPE_ACCESS_INBOUND;
+             dwInputBufferSize = dwPipeBufferSize;
+         }
+-        DWORD dwPipeFlags = PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS;
++        DWORD dwPipeFlags = PIPE_TYPE_BYTE | PIPE_WAIT;
++        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista)
++            dwPipeFlags |= PIPE_REJECT_REMOTE_CLIENTS;
++
++        PIPE_REJECT_REMOTE_CLIENTS;
+         hServer = CreateNamedPipe(pipeName,
+                                   dwOpenMode,
+                                   dwPipeFlags,
+diff -aupr 5.15.9-orig/qtbase/src/corelib/io/qsettings.cpp 5.15.9-x32/qtbase/src/corelib/io/qsettings.cpp
+--- 5.15.9-orig/qtbase/src/corelib/io/qsettings.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/io/qsettings.cpp	1970-01-01 00:00:00 +0000
+@@ -83,6 +83,8 @@
+ #  include <qt_windows.h>
+ #  ifndef Q_OS_WINRT
+ #    include <shlobj.h>
++#    include <private/qsystemlibrary_p.h>
++#    include "qsysinfo.h"
+ #  endif
+ #endif
+ 
+@@ -964,8 +966,13 @@ static QString windowsConfigPath(const K
+ {
+     QString result;
+ 
++    typedef HRESULT (WINAPI *GetKnownFolderPath)(const GUID&, DWORD, HANDLE, LPWSTR*);
++    static GetKnownFolderPath sHGetKnownFolderPath = nullptr;
++    if (!sHGetKnownFolderPath)
++        sHGetKnownFolderPath = reinterpret_cast<GetKnownFolderPath>(QSystemLibrary::resolve(QLatin1String("shell32"), "SHGetKnownFolderPath"));
++
+     PWSTR path = nullptr;
+-    if (SHGetKnownFolderPath(type, KF_FLAG_DONT_VERIFY, NULL, &path) == S_OK) {
++    if (sHGetKnownFolderPath && sHGetKnownFolderPath(type, KF_FLAG_DONT_VERIFY, NULL, &path) == S_OK) {
+         result = QString::fromWCharArray(path);
+         CoTaskMemFree(path);
+     }
+@@ -980,6 +987,14 @@ static QString windowsConfigPath(const K
+ 
+     return result;
+ }
++
++static QString windowsConfigPathLegacy(int type) // FIXME
++{
++    QString result;
++    // ...
++    return result;
++}
++
+ #elif defined(Q_OS_WINRT) // Q_OS_WIN && !Q_OS_WINRT
+ 
+ enum ConfigPathType {
+diff -aupr 5.15.9-orig/qtbase/src/corelib/io/qwindowspipereader.cpp 5.15.9-x32/qtbase/src/corelib/io/qwindowspipereader.cpp
+--- 5.15.9-orig/qtbase/src/corelib/io/qwindowspipereader.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/io/qwindowspipereader.cpp	1970-01-01 00:00:00 +0000
+@@ -72,6 +72,21 @@ QWindowsPipeReader::QWindowsPipeReader(Q
+             this, &QWindowsPipeReader::emitPendingReadyRead, Qt::QueuedConnection);
+ }
+ 
++bool qt_cancelIo(HANDLE handle, OVERLAPPED *overlapped)
++{
++    typedef BOOL (WINAPI *PtrCancelIoEx)(HANDLE, LPOVERLAPPED);
++    static PtrCancelIoEx ptrCancelIoEx = 0;
++    if (!ptrCancelIoEx) {
++        HMODULE kernel32 = GetModuleHandleA("kernel32");
++        if (kernel32)
++            ptrCancelIoEx = PtrCancelIoEx(GetProcAddress(kernel32, "CancelIoEx"));
++    }
++    if (ptrCancelIoEx)
++        return ptrCancelIoEx(handle, overlapped);
++    else
++        return CancelIo(handle);
++}
++
+ QWindowsPipeReader::~QWindowsPipeReader()
+ {
+     stop();
+@@ -96,10 +111,10 @@ void QWindowsPipeReader::stop()
+ {
+     stopped = true;
+     if (readSequenceStarted) {
+-        if (!CancelIoEx(handle, &overlapped)) {
++        if (!qt_cancelIo(handle, &overlapped)) {
+             const DWORD dwError = GetLastError();
+             if (dwError != ERROR_NOT_FOUND) {
+-                qErrnoWarning(dwError, "QWindowsPipeReader: CancelIoEx on handle %p failed.",
++                qErrnoWarning(dwError, "QWindowsPipeReader: qt_cancelIo on handle %p failed.",
+                               handle);
+             }
+         }
+diff -aupr 5.15.9-orig/qtbase/src/corelib/io/qwindowspipewriter.cpp 5.15.9-x32/qtbase/src/corelib/io/qwindowspipewriter.cpp
+--- 5.15.9-orig/qtbase/src/corelib/io/qwindowspipewriter.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/io/qwindowspipewriter.cpp	1970-01-01 00:00:00 +0000
+@@ -43,6 +43,8 @@
+ 
+ QT_BEGIN_NAMESPACE
+ 
++extern bool qt_cancelIo(HANDLE handle, OVERLAPPED *overlapped);     // from qwindowspipereader.cpp
++
+ QWindowsPipeWriter::Overlapped::Overlapped(QWindowsPipeWriter *pipeWriter)
+     : pipeWriter(pipeWriter)
+ {
+@@ -212,10 +214,10 @@ void QWindowsPipeWriter::stop()
+     bytesWrittenPending = false;
+     pendingBytesWrittenValue = 0;
+     if (writeSequenceStarted) {
+-        if (!CancelIoEx(handle, &overlapped)) {
++        if (!qt_cancelIo(handle, &overlapped)) {
+             const DWORD dwError = GetLastError();
+             if (dwError != ERROR_NOT_FOUND) {
+-                qErrnoWarning(dwError, "QWindowsPipeWriter: CancelIoEx on handle %p failed.",
++                qErrnoWarning(dwError, "QWindowsPipeWriter: qt_cancelIo on handle %p failed.",
+                               handle);
+             }
+         }
+diff -aupr 5.15.9-orig/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp 5.15.9-x32/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp
+--- 5.15.9-orig/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp	1970-01-01 00:00:00 +0000
+@@ -41,6 +41,10 @@
+ #include "qdeadlinetimer.h"
+ #include "qdeadlinetimer_p.h"
+ #include <qt_windows.h>
++#include <private/qsystemlibrary_p.h>
++
++typedef ULONGLONG (WINAPI *PtrGetTickCount64)(void);
++static PtrGetTickCount64 ptrGetTickCount64 = 0;
+ 
+ QT_BEGIN_NAMESPACE
+ 
+@@ -53,6 +57,14 @@ static void resolveCounterFrequency()
+     if (done)
+         return;
+ 
++    // try to get GetTickCount64 from the system
++    QSystemLibrary kernel32(QLatin1String("kernel32"));
++    if (!kernel32.load())
++        return;
++
++    // does this function exist on WinCE, or will ever exist?
++    ptrGetTickCount64 = (PtrGetTickCount64)kernel32.resolve("GetTickCount64");
++
+     // Retrieve the number of high-resolution performance counter ticks per second
+     LARGE_INTEGER frequency;
+     if (!QueryPerformanceFrequency(&frequency)) {
+@@ -93,7 +105,16 @@ static quint64 getTickCount()
+         return counter.QuadPart;
+     }
+ 
+-    return GetTickCount64();
++    if (ptrGetTickCount64)
++        return ptrGetTickCount64();
++
++    static quint32 highdword = 0;
++    static quint32 lastval = 0;
++    quint32 val = GetTickCount();
++    if (val < lastval)
++        ++highdword;
++    lastval = val;
++    return val | (quint64(highdword) << 32);
+ }
+ 
+ quint64 qt_msectime()
+diff -aupr 5.15.9-orig/qtbase/src/corelib/text/qcollator_win.cpp 5.15.9-x32/qtbase/src/corelib/text/qcollator_win.cpp
+--- 5.15.9-orig/qtbase/src/corelib/text/qcollator_win.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/text/qcollator_win.cpp	1970-01-01 00:00:00 +0000
+@@ -113,6 +113,7 @@ int QCollator::compare(QStringView s1, Q
+                                   reinterpret_cast<const wchar_t *>(s1.data()), s1.size(),
+                                   reinterpret_cast<const wchar_t *>(s2.data()), s2.size());
+ #else
++#error CompareStringEx
+     const int ret = CompareStringEx(LPCWSTR(d->localeName.utf16()), d->collator,
+                                     reinterpret_cast<LPCWSTR>(s1.data()), s1.size(),
+                                     reinterpret_cast<LPCWSTR>(s2.data()), s2.size(),
+diff -aupr 5.15.9-orig/qtbase/src/corelib/text/qlocale_win.cpp 5.15.9-x32/qtbase/src/corelib/text/qlocale_win.cpp
+--- 5.15.9-orig/qtbase/src/corelib/text/qlocale_win.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/text/qlocale_win.cpp	1970-01-01 00:00:00 +0000
+@@ -60,6 +60,8 @@
+ #include <windows.system.userprofile.h>
+ #endif // Q_OS_WINRT
+ 
++#include <private/qsystemlibrary_p.h>
++
+ QT_BEGIN_NAMESPACE
+ 
+ #ifndef Q_OS_WINRT
+@@ -73,11 +75,12 @@ using namespace ABI::Windows::Foundation
+ using namespace ABI::Windows::System::UserProfile;
+ 
+ static QByteArray getWinLocaleName(LPWSTR id = LOCALE_NAME_USER_DEFAULT);
+-static const char *winLangCodeToIsoName(int code);
+ static QString winIso639LangName(LPWSTR id = LOCALE_NAME_USER_DEFAULT);
+ static QString winIso3116CtryName(LPWSTR id = LOCALE_NAME_USER_DEFAULT);
+ #endif // Q_OS_WINRT
+ 
++static const char *winLangCodeToIsoName(int code);
++
+ #ifndef QT_NO_SYSTEMLOCALE
+ 
+ #ifndef MUI_LANGUAGE_NAME
+@@ -407,7 +410,7 @@ QVariant QSystemLocalePrivate::dayName(i
+ 
+     if (type == QLocale::LongFormat)
+         return getLocaleInfo<QVariant>(long_day_map[day]);
+-    if (type == QLocale::NarrowFormat)
++    if (type == QLocale::NarrowFormat && QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista)
+         return getLocaleInfo<QVariant>(narrow_day_map[day]);
+     return getLocaleInfo<QVariant>(short_day_map[day]);
+ }
+@@ -670,28 +673,48 @@ QVariant QSystemLocalePrivate::uiLanguag
+     unsigned long cnt = 0;
+     QVarLengthArray<wchar_t, 64> buf(64);
+ #  if !defined(QT_BOOTSTRAPPED) && !defined(QT_BUILD_QMAKE) // Not present in MinGW 4.9/bootstrap builds.
+-    unsigned long size = buf.size();
+-    if (!GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &cnt, buf.data(), &size)) {
+-        size = 0;
+-        if (GetLastError() == ERROR_INSUFFICIENT_BUFFER &&
+-                GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &cnt, NULL, &size)) {
+-            buf.resize(size);
+-            if (!GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &cnt, buf.data(), &size))
+-                return QStringList();
++    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista) {
++        typedef BOOL (WINAPI *GetUserPreferredUILanguagesFunc) (
++                    DWORD dwFlags,
++                    PULONG pulNumLanguages,
++                    PWSTR pwszLanguagesBuffer,
++                    PULONG pcchLanguagesBuffer);
++        static GetUserPreferredUILanguagesFunc GetUserPreferredUILanguages_ptr = 0;
++        if (!GetUserPreferredUILanguages_ptr) {
++            QSystemLibrary lib(QLatin1String("kernel32"));
++            if (lib.load())
++                GetUserPreferredUILanguages_ptr = (GetUserPreferredUILanguagesFunc)lib.resolve("GetUserPreferredUILanguages");
++        }
++        if (GetUserPreferredUILanguages_ptr) {
++            unsigned long cnt = 0;
++            QVarLengthArray<wchar_t, 64> buf(64);
++            unsigned long size = buf.size();
++            if (!GetUserPreferredUILanguages_ptr(MUI_LANGUAGE_NAME, &cnt, buf.data(), &size)) {
++                size = 0;
++                if (GetLastError() == ERROR_INSUFFICIENT_BUFFER &&
++                    GetUserPreferredUILanguages_ptr(MUI_LANGUAGE_NAME, &cnt, NULL, &size)) {
++                    buf.resize(size);
++                    if (!GetUserPreferredUILanguages_ptr(MUI_LANGUAGE_NAME, &cnt, buf.data(), &size))
++                        return QStringList();
++                }
++            }
++            QStringList result;
++            result.reserve(cnt);
++            const wchar_t *str = buf.constData();
++            for (; cnt > 0; --cnt) {
++                QString s = QString::fromWCharArray(str);
++                if (s.isEmpty())
++                    break; // something is wrong
++                result.append(s);
++                str += s.size() + 1;
++            }
++            return result;
+         }
+     }
++    return QStringList(QString::fromLatin1(winLangCodeToIsoName(GetUserDefaultUILanguage())));
++#  else
++    return QStringList();
+ #  endif // !QT_BOOTSTRAPPED && !QT_BUILD_QMAKE
+-    QStringList result;
+-    result.reserve(cnt);
+-    const wchar_t *str = buf.constData();
+-    for (; cnt > 0; --cnt) {
+-        QString s = QString::fromWCharArray(str);
+-        if (s.isEmpty())
+-            break; // something is wrong
+-        result.append(s);
+-        str += s.size() + 1;
+-    }
+-    return result;
+ #else // !Q_OS_WINRT
+     QStringList result;
+ 
+diff -aupr 5.15.9-orig/qtbase/src/corelib/text/qstring.cpp 5.15.9-x32/qtbase/src/corelib/text/qstring.cpp
+--- 5.15.9-orig/qtbase/src/corelib/text/qstring.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/corelib/text/qstring.cpp	1970-01-01 00:00:00 +0000
+@@ -6545,7 +6545,7 @@ int QString::localeAwareCompare_helper(c
+     const QString lhs = QString::fromRawData(data1, length1).normalized(QString::NormalizationForm_C);
+     const QString rhs = QString::fromRawData(data2, length2).normalized(QString::NormalizationForm_C);
+ #  if defined(Q_OS_WIN)
+-    int res = CompareStringEx(LOCALE_NAME_USER_DEFAULT, 0, (LPWSTR)lhs.constData(), lhs.length(), (LPWSTR)rhs.constData(), rhs.length(), NULL, NULL, 0);
++    int res = CompareString(LOCALE_USER_DEFAULT, 0, (LPWSTR)lhs.constData(), lhs.length(), (LPWSTR)rhs.constData(), rhs.length());
+ 
+     switch (res) {
+     case CSTR_LESS_THAN:
+diff -aupr 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowsbackingstore.cpp 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowsbackingstore.cpp
+--- 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowsbackingstore.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowsbackingstore.cpp	1970-01-01 00:00:00 +0000
+@@ -98,16 +98,20 @@ void QWindowsBackingStore::flush(QWindow
+         POINT ptDst = {r.x(), r.y()};
+         POINT ptSrc = {0, 0};
+         BLENDFUNCTION blend = {AC_SRC_OVER, 0, BYTE(qRound(255.0 * rw->opacity())), AC_SRC_ALPHA};
+-        RECT dirty = {dirtyRect.x(), dirtyRect.y(),
+-                      dirtyRect.x() + dirtyRect.width(), dirtyRect.y() + dirtyRect.height()};
+-        UPDATELAYEREDWINDOWINFO info = {sizeof(info), nullptr, &ptDst, &size,
+-                                        m_image->hdc(), &ptSrc, 0, &blend, ULW_ALPHA, &dirty};
+-        const BOOL result = UpdateLayeredWindowIndirect(rw->handle(), &info);
+-        if (!result)
+-            qErrnoWarning("UpdateLayeredWindowIndirect failed for ptDst=(%d, %d),"
+-                          " size=(%dx%d), dirty=(%dx%d %d, %d)", r.x(), r.y(),
+-                          r.width(), r.height(), dirtyRect.width(), dirtyRect.height(),
+-                          dirtyRect.x(), dirtyRect.y());
++        if (QWindowsContext::user32dll.updateLayeredWindowIndirect) {
++            RECT dirty = {dirtyRect.x(), dirtyRect.y(),
++                          dirtyRect.x() + dirtyRect.width(), dirtyRect.y() + dirtyRect.height()};
++            UPDATELAYEREDWINDOWINFO info = {sizeof(info), nullptr, &ptDst, &size,
++                                            m_image->hdc(), &ptSrc, 0, &blend, ULW_ALPHA, &dirty};
++            const BOOL result = QWindowsContext::user32dll.updateLayeredWindowIndirect(rw->handle(), &info);
++            if (!result)
++                qErrnoWarning("UpdateLayeredWindowIndirect failed for ptDst=(%d, %d),"
++                              " size=(%dx%d), dirty=(%dx%d %d, %d)", r.x(), r.y(),
++                              r.width(), r.height(), dirtyRect.width(), dirtyRect.height(),
++                              dirtyRect.x(), dirtyRect.y());
++        }
++        else
++            QWindowsContext::user32dll.updateLayeredWindow(rw->handle(), NULL, &ptDst, &size, m_image->hdc(), &ptSrc, 0, &blend, ULW_ALPHA);
+     } else {
+         const HDC dc = rw->getDC();
+         if (!dc) {
+diff -aupr 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
+--- 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp	1970-01-01 00:00:00 +0000
+@@ -77,7 +77,6 @@
+ #include <QtCore/qstringlist.h>
+ #include <QtCore/qdebug.h>
+ #include <QtCore/qoperatingsystemversion.h>
+-#include <QtCore/qsysinfo.h>
+ #include <QtCore/qscopedpointer.h>
+ #include <QtCore/quuid.h>
+ #include <QtCore/private/qsystemlibrary_p.h>
+@@ -190,10 +189,21 @@ static bool enableNonClientDpiScaling(HW
+ void QWindowsUser32DLL::init()
+ {
+     QSystemLibrary library(QStringLiteral("user32"));
++    setLayeredWindowAttributes = (SetLayeredWindowAttributes)(library.resolve("SetLayeredWindowAttributes"));
++    updateLayeredWindow = (UpdateLayeredWindow)(library.resolve("UpdateLayeredWindow"));
++    if (Q_UNLIKELY(!setLayeredWindowAttributes || !updateLayeredWindow))
++        qFatal("This version of Windows is not supported (User32.dll is missing the symbols 'SetLayeredWindowAttributes', 'UpdateLayeredWindow').");
++    
++    updateLayeredWindowIndirect = (UpdateLayeredWindowIndirect)(library.resolve("UpdateLayeredWindowIndirect"));
++    isHungAppWindow = (IsHungAppWindow)library.resolve("IsHungAppWindow");
+     setProcessDPIAware = (SetProcessDPIAware)library.resolve("SetProcessDPIAware");
+ 
+-    addClipboardFormatListener = (AddClipboardFormatListener)library.resolve("AddClipboardFormatListener");
+-    removeClipboardFormatListener = (RemoveClipboardFormatListener)library.resolve("RemoveClipboardFormatListener");
++    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista) {
++        addClipboardFormatListener = (AddClipboardFormatListener)library.resolve("AddClipboardFormatListener");
++        removeClipboardFormatListener = (RemoveClipboardFormatListener)library.resolve("RemoveClipboardFormatListener");
++        registerPowerSettingNotification = (RegisterPowerSettingNotification)library.resolve("RegisterPowerSettingNotification");
++        unregisterPowerSettingNotification = (UnregisterPowerSettingNotification)library.resolve("UnregisterPowerSettingNotification");
++    }
+ 
+     getDisplayAutoRotationPreferences = (GetDisplayAutoRotationPreferences)library.resolve("GetDisplayAutoRotationPreferences");
+     setDisplayAutoRotationPreferences = (SetDisplayAutoRotationPreferences)library.resolve("SetDisplayAutoRotationPreferences");
+@@ -221,6 +231,19 @@ void QWindowsUser32DLL::init()
+     }
+ }
+ 
++bool QWindowsUser32DLL::initTouch()
++{
++    if (!isTouchWindow && QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows7) {
++        QSystemLibrary library(QStringLiteral("user32"));
++        isTouchWindow = (IsTouchWindow)(library.resolve("IsTouchWindow"));
++        registerTouchWindow = (RegisterTouchWindow)(library.resolve("RegisterTouchWindow"));
++        unregisterTouchWindow = (UnregisterTouchWindow)(library.resolve("UnregisterTouchWindow"));
++        getTouchInputInfo = (GetTouchInputInfo)(library.resolve("GetTouchInputInfo"));
++        closeTouchInputHandle = (CloseTouchInputHandle)(library.resolve("CloseTouchInputHandle"));
++    }
++    return isTouchWindow && registerTouchWindow && unregisterTouchWindow && getTouchInputInfo && closeTouchInputHandle;
++}
++
+ bool QWindowsUser32DLL::supportsPointerApi()
+ {
+     return enableMouseInPointer && getPointerType && getPointerInfo && getPointerDeviceRects
+@@ -228,6 +251,16 @@ bool QWindowsUser32DLL::supportsPointerA
+             && getPointerPenInfo && getPointerPenInfoHistory && skipPointerFrameMessages;
+ }
+ 
++void QWindowsShell32DLL::init()
++{
++    QSystemLibrary library(QStringLiteral("shell32"));
++    sHCreateItemFromParsingName = (SHCreateItemFromParsingName)(library.resolve("SHCreateItemFromParsingName"));
++    sHGetKnownFolderIDList = (SHGetKnownFolderIDList)(library.resolve("SHGetKnownFolderIDList"));
++    sHGetStockIconInfo = (SHGetStockIconInfo)library.resolve("SHGetStockIconInfo");
++    sHGetImageList = (SHGetImageList)library.resolve("SHGetImageList");
++    sHCreateItemFromIDList = (SHCreateItemFromIDList)library.resolve("SHCreateItemFromIDList");
++}
++
+ void QWindowsShcoreDLL::init()
+ {
+     if (QOperatingSystemVersion::current() < QOperatingSystemVersion::Windows8_1)
+@@ -239,6 +272,7 @@ void QWindowsShcoreDLL::init()
+ }
+ 
+ QWindowsUser32DLL QWindowsContext::user32dll;
++QWindowsShell32DLL QWindowsContext::shell32dll;
+ QWindowsShcoreDLL QWindowsContext::shcoredll;
+ 
+ QWindowsContext *QWindowsContext::m_instance = nullptr;
+@@ -283,9 +317,10 @@ QWindowsContextPrivate::QWindowsContextP
+     : m_oleInitializeResult(OleInitialize(nullptr))
+ {
+     QWindowsContext::user32dll.init();
++    QWindowsContext::shell32dll.init();
+     QWindowsContext::shcoredll.init();
+ 
+-    if (m_pointerHandler.touchDevice() || m_mouseHandler.touchDevice())
++    if ((m_pointerHandler.touchDevice() || m_mouseHandler.touchDevice()) && QWindowsContext::user32dll.initTouch())
+         m_systemInfo |= QWindowsContext::SI_SupportsTouch;
+     m_displayContext = GetDC(nullptr);
+     m_defaultDPI = GetDeviceCaps(m_displayContext, LOGPIXELSY);
+@@ -319,8 +354,8 @@ QWindowsContext::~QWindowsContext()
+     d->m_tabletSupport.reset(); // Destroy internal window before unregistering classes.
+ #endif
+ 
+-    if (d->m_powerNotification)
+-        UnregisterPowerSettingNotification(d->m_powerNotification);
++    if (d->m_powerNotification && user32dll.unregisterPowerSettingNotification)
++        user32dll.unregisterPowerSettingNotification(d->m_powerNotification);
+ 
+     if (d->m_powerDummyWindow)
+         DestroyWindow(d->m_powerDummyWindow);
+@@ -425,6 +460,9 @@ extern "C" LRESULT QT_WIN_CALLBACK qWind
+ 
+ bool QWindowsContext::initPowerNotificationHandler()
+ {
++    if (!user32dll.registerPowerSettingNotification)
++        return false;
++    
+     if (d->m_powerNotification)
+         return false;
+ 
+@@ -432,7 +470,7 @@ bool QWindowsContext::initPowerNotificat
+     if (!d->m_powerDummyWindow)
+         return false;
+ 
+-    d->m_powerNotification = RegisterPowerSettingNotification(d->m_powerDummyWindow, &GUID_MONITOR_POWER_ON, DEVICE_NOTIFY_WINDOW_HANDLE);
++    d->m_powerNotification = user32dll.registerPowerSettingNotification(d->m_powerDummyWindow, &GUID_MONITOR_POWER_ON, DEVICE_NOTIFY_WINDOW_HANDLE);
+     if (!d->m_powerNotification) {
+         DestroyWindow(d->m_powerDummyWindow);
+         d->m_powerDummyWindow = nullptr;
+@@ -1039,7 +1077,9 @@ bool QWindowsContext::systemParametersIn
+ bool QWindowsContext::nonClientMetrics(NONCLIENTMETRICS *ncm, unsigned dpi)
+ {
+     memset(ncm, 0, sizeof(NONCLIENTMETRICS));
+-    ncm->cbSize = sizeof(NONCLIENTMETRICS);
++    ncm->cbSize =
++        QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista ?
++        sizeof(NONCLIENTMETRICS) : FIELD_OFFSET(NONCLIENTMETRICS, lfMessageFont) + sizeof(LOGFONT);
+     return systemParametersInfo(SPI_GETNONCLIENTMETRICS, ncm->cbSize, ncm, dpi);
+ }
+ 
+diff -aupr 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.h 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowscontext.h
+--- 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.h	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowscontext.h	1970-01-01 00:00:00 +0000
+@@ -85,8 +85,22 @@ class QTouchDevice;
+ struct QWindowsUser32DLL
+ {
+     inline void init();
++    inline bool initTouch();
++
+     inline bool supportsPointerApi();
+ 
++    typedef BOOL (WINAPI *IsTouchWindow)(HWND, PULONG);
++    typedef BOOL (WINAPI *RegisterTouchWindow)(HWND, ULONG);
++    typedef BOOL (WINAPI *UnregisterTouchWindow)(HWND);
++    typedef BOOL (WINAPI *GetTouchInputInfo)(HANDLE, UINT, PVOID, int);
++    typedef BOOL (WINAPI *CloseTouchInputHandle)(HANDLE);
++    typedef BOOL (WINAPI *SetLayeredWindowAttributes)(HWND, COLORREF, BYTE, DWORD);
++    typedef BOOL (WINAPI *UpdateLayeredWindow)(HWND, HDC , const POINT *, const SIZE *, HDC, const POINT *, COLORREF, const BLENDFUNCTION *, DWORD);
++    typedef BOOL (WINAPI *UpdateLayeredWindowIndirect)(HWND, const UPDATELAYEREDWINDOWINFO *);
++    typedef BOOL (WINAPI *IsHungAppWindow)(HWND);
++    typedef HPOWERNOTIFY (WINAPI *RegisterPowerSettingNotification)(HANDLE, LPCGUID, DWORD);
++    typedef BOOL (WINAPI *UnregisterPowerSettingNotification)(HPOWERNOTIFY);
++
+     typedef BOOL (WINAPI *EnableMouseInPointer)(BOOL);
+     typedef BOOL (WINAPI *GetPointerType)(UINT32, PVOID);
+     typedef BOOL (WINAPI *GetPointerInfo)(UINT32, PVOID);
+@@ -108,6 +122,18 @@ struct QWindowsUser32DLL
+     typedef int  (WINAPI *GetAwarenessFromDpiAwarenessContext)(int);
+     typedef BOOL (WINAPI *SystemParametersInfoForDpi)(UINT, UINT, PVOID, UINT, UINT);
+ 
++    IsTouchWindow isTouchWindow = nullptr;
++    RegisterTouchWindow registerTouchWindow = nullptr;
++    UnregisterTouchWindow unregisterTouchWindow = nullptr;
++    GetTouchInputInfo getTouchInputInfo = nullptr;
++    CloseTouchInputHandle closeTouchInputHandle = nullptr;
++    SetLayeredWindowAttributes setLayeredWindowAttributes = nullptr;
++    UpdateLayeredWindow updateLayeredWindow = nullptr;
++    UpdateLayeredWindowIndirect updateLayeredWindowIndirect = nullptr;
++    IsHungAppWindow isHungAppWindow = nullptr;
++    RegisterPowerSettingNotification registerPowerSettingNotification = nullptr;
++    UnregisterPowerSettingNotification unregisterPowerSettingNotification = nullptr;
++
+     // Windows pointer functions (Windows 8 or later).
+     EnableMouseInPointer enableMouseInPointer = nullptr;
+     GetPointerType getPointerType = nullptr;
+@@ -139,6 +165,23 @@ struct QWindowsUser32DLL
+     SystemParametersInfoForDpi systemParametersInfoForDpi = nullptr;
+ };
+ 
++struct QWindowsShell32DLL
++{
++    inline void init();
++
++    typedef HRESULT (WINAPI *SHCreateItemFromParsingName)(PCWSTR, IBindCtx *, const GUID&, void **);
++    typedef HRESULT (WINAPI *SHGetKnownFolderIDList)(const GUID &, DWORD, HANDLE, PIDLIST_ABSOLUTE *);
++    typedef HRESULT (WINAPI *SHGetStockIconInfo)(int , int , _SHSTOCKICONINFO *);
++    typedef HRESULT (WINAPI *SHGetImageList)(int, REFIID , void **);
++    typedef HRESULT (WINAPI *SHCreateItemFromIDList)(PCIDLIST_ABSOLUTE, REFIID, void **);
++
++    SHCreateItemFromParsingName sHCreateItemFromParsingName = nullptr;
++    SHGetKnownFolderIDList sHGetKnownFolderIDList = nullptr;
++    SHGetStockIconInfo sHGetStockIconInfo = nullptr;
++    SHGetImageList sHGetImageList = nullptr;
++    SHCreateItemFromIDList sHCreateItemFromIDList = nullptr;
++};
++
+ // Shell scaling library (Windows 8.1 onwards)
+ struct QWindowsShcoreDLL {
+     void init();
+@@ -246,6 +289,7 @@ public:
+     QWindowsTabletSupport *tabletSupport() const;
+ 
+     static QWindowsUser32DLL user32dll;
++    static QWindowsShell32DLL shell32dll;
+     static QWindowsShcoreDLL shcoredll;
+ 
+     static QByteArray comErrorString(HRESULT hr);
+diff -aupr 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpers.cpp 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpers.cpp
+--- 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpers.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpers.cpp	1970-01-01 00:00:00 +0000
+@@ -896,18 +896,20 @@ void QWindowsNativeFileDialogBase::setWi
+ IShellItem *QWindowsNativeFileDialogBase::shellItem(const QUrl &url)
+ {
+     if (url.isLocalFile()) {
++        if (!QWindowsContext::shell32dll.sHCreateItemFromParsingName)
++            return nullptr;
+         IShellItem *result = nullptr;
+         const QString native = QDir::toNativeSeparators(url.toLocalFile());
+-        const HRESULT hr =
+-                SHCreateItemFromParsingName(reinterpret_cast<const wchar_t *>(native.utf16()),
+-                                            nullptr, IID_IShellItem,
+-                                            reinterpret_cast<void **>(&result));
++        const HRESULT hr = QWindowsContext::shell32dll.sHCreateItemFromParsingName(reinterpret_cast<const wchar_t *>(native.utf16()),
++            nullptr, IID_IShellItem, reinterpret_cast<void **>(&result));
+         if (FAILED(hr)) {
+             qErrnoWarning("%s: SHCreateItemFromParsingName(%s)) failed", __FUNCTION__, qPrintable(url.toString()));
+             return nullptr;
+         }
+         return result;
+     } else if (url.scheme() == u"clsid") {
++        if (!QWindowsContext::shell32dll.sHGetKnownFolderIDList || !QWindowsContext::shell32dll.sHCreateItemFromIDList)
++            return nullptr;
+         // Support for virtual folders via GUID
+         // (see https://msdn.microsoft.com/en-us/library/windows/desktop/dd378457(v=vs.85).aspx)
+         // specified as "clsid:<GUID>" (without '{', '}').
+@@ -918,12 +920,12 @@ IShellItem *QWindowsNativeFileDialogBase
+             return nullptr;
+         }
+         PIDLIST_ABSOLUTE idList;
+-        HRESULT hr = SHGetKnownFolderIDList(uuid, 0, nullptr, &idList);
++        HRESULT hr = QWindowsContext::shell32dll.sHGetKnownFolderIDList(uuid, 0, nullptr, &idList);
+         if (FAILED(hr)) {
+             qErrnoWarning("%s: SHGetKnownFolderIDList(%s)) failed", __FUNCTION__, qPrintable(url.toString()));
+             return nullptr;
+         }
+-        hr = SHCreateItemFromIDList(idList, IID_IShellItem, reinterpret_cast<void **>(&result));
++        hr = QWindowsContext::shell32dll.sHCreateItemFromIDList(idList, IID_IShellItem, reinterpret_cast<void **>(&result));
+         CoTaskMemFree(idList);
+         if (FAILED(hr)) {
+             qErrnoWarning("%s: SHCreateItemFromIDList(%s)) failed", __FUNCTION__, qPrintable(url.toString()));
+diff -aupr 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp
+--- 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp	1970-01-01 00:00:00 +0000
+@@ -78,6 +78,7 @@
+ 
+ #include <QtCore/qdebug.h>
+ #include <QtCore/qvariant.h>
++#include <QtCore/qoperatingsystemversion.h>
+ 
+ #include <limits.h>
+ 
+@@ -226,6 +227,9 @@ static inline unsigned parseOptions(cons
+             qWarning() << "Unknown option" << param;
+         }
+     }
++    if (QOperatingSystemVersion::current() < QOperatingSystemVersion::WindowsVista &&
++        !(options & QWindowsIntegration::NoNativeDialogs))
++        options |= QWindowsIntegration::XpNativeDialogs;
+     return options;
+ }
+ 
+diff -aupr 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowsmousehandler.cpp 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowsmousehandler.cpp
+--- 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowsmousehandler.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowsmousehandler.cpp	1970-01-01 00:00:00 +0000
+@@ -636,7 +636,7 @@ bool QWindowsMouseHandler::translateTouc
+     touchPoints.reserve(winTouchPointCount);
+     Qt::TouchPointStates allStates;
+ 
+-    GetTouchInputInfo(reinterpret_cast<HTOUCHINPUT>(msg.lParam),
++    QWindowsContext::user32dll.getTouchInputInfo(reinterpret_cast<HTOUCHINPUT>(msg.lParam),
+                       UINT(msg.wParam), winTouchInputs.data(), sizeof(TOUCHINPUT));
+     for (int i = 0; i < winTouchPointCount; ++i) {
+         const TOUCHINPUT &winTouchInput = winTouchInputs[i];
+@@ -678,7 +678,7 @@ bool QWindowsMouseHandler::translateTouc
+         touchPoints.append(touchPoint);
+     }
+ 
+-    CloseTouchInputHandle(reinterpret_cast<HTOUCHINPUT>(msg.lParam));
++    QWindowsContext::user32dll.closeTouchInputHandle(reinterpret_cast<HTOUCHINPUT>(msg.lParam));
+ 
+     // all touch points released, forget the ids we've seen, they may not be reused
+     if (allStates == Qt::TouchPointReleased)
+diff -aupr 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp
+--- 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp	1970-01-01 00:00:00 +0000
+@@ -64,6 +64,7 @@
+ #include <QtCore/qvector.h>
+ #include <QtCore/qsettings.h>
+ #include <qpa/qwindowsysteminterface.h>
++#include <private/qsystemlibrary_p.h>
+ 
+ #include <qt_windows.h>
+ #include <commctrl.h>
+@@ -78,6 +79,19 @@ static const UINT q_uNOTIFYICONID = 0;
+ static uint MYWM_TASKBARCREATED = 0;
+ #define MYWM_NOTIFYICON (WM_APP+101)
+ 
++struct Q_NOTIFYICONIDENTIFIER {
++    DWORD cbSize;
++    HWND hWnd;
++    UINT uID;
++    GUID guidItem;
++};
++
++#define Q_MSGFLT_ALLOW 1
++
++typedef HRESULT (WINAPI *PtrShell_NotifyIconGetRect)(const Q_NOTIFYICONIDENTIFIER* identifier, RECT* iconLocation);
++typedef BOOL (WINAPI *PtrChangeWindowMessageFilter)(UINT message, DWORD dwFlag);
++typedef BOOL (WINAPI *PtrChangeWindowMessageFilterEx)(HWND hWnd, UINT message, DWORD action, void* pChangeFilterStruct);
++
+ Q_GUI_EXPORT HICON qt_pixmapToWinHICON(const QPixmap &);
+ 
+ // Copy QString data to a limited wchar_t array including \0.
+@@ -90,13 +104,6 @@ static inline void qStringToLimitedWChar
+     target[length] = wchar_t(0);
+ }
+ 
+-static inline void initNotifyIconData(NOTIFYICONDATA &tnd)
+-{
+-    memset(&tnd, 0, sizeof(NOTIFYICONDATA));
+-    tnd.cbSize = sizeof(NOTIFYICONDATA);
+-    tnd.uVersion = NOTIFYICON_VERSION_4;
+-}
+-
+ static void setIconContents(NOTIFYICONDATA &tnd, const QString &tip, HICON hIcon)
+ {
+     tnd.uFlags |= NIF_MESSAGE | NIF_ICON | NIF_TIP;
+@@ -188,6 +195,12 @@ static inline HWND createTrayIconMessage
+ 
+ QWindowsSystemTrayIcon::QWindowsSystemTrayIcon()
+ {
++    notifyIconSize = sizeof(NOTIFYICONDATA);
++    version = NOTIFYICON_VERSION_4;
++    if (QOperatingSystemVersion::current() < QOperatingSystemVersion::WindowsVista) {
++        notifyIconSize = NOTIFYICONDATA_V2_SIZE;
++        version = NOTIFYICON_VERSION;
++    }
+ }
+ 
+ QWindowsSystemTrayIcon::~QWindowsSystemTrayIcon()
+@@ -235,17 +248,99 @@ void QWindowsSystemTrayIcon::updateToolT
+ 
+ QRect QWindowsSystemTrayIcon::geometry() const
+ {
+-    NOTIFYICONIDENTIFIER nid;
+-    memset(&nid, 0, sizeof(nid));
+-    nid.cbSize = sizeof(nid);
+-    nid.hWnd = m_hwnd;
+-    nid.uID = q_uNOTIFYICONID;
+-    RECT rect;
+-    const QRect result = SUCCEEDED(Shell_NotifyIconGetRect(&nid, &rect))
+-        ? QRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
+-        : QRect();
+-    qCDebug(lcQpaTrayIcon) << __FUNCTION__ << this << "returns" << result;
+-    return result;
++    struct AppData
++    {
++        HWND hwnd;
++        UINT uID;
++    };
++
++    static PtrShell_NotifyIconGetRect Shell_NotifyIconGetRect =
++        (PtrShell_NotifyIconGetRect)QSystemLibrary::resolve(QLatin1String("shell32"),
++                                                            "Shell_NotifyIconGetRect");
++
++    if (Shell_NotifyIconGetRect) {
++        Q_NOTIFYICONIDENTIFIER nid;
++        memset(&nid, 0, sizeof(nid));
++        nid.cbSize = sizeof(nid);
++        nid.hWnd = m_hwnd;
++        nid.uID = q_uNOTIFYICONID;
++
++        RECT rect;
++        HRESULT hr = Shell_NotifyIconGetRect(&nid, &rect);
++        if (SUCCEEDED(hr)) {
++            return QRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
++        }
++    }
++
++    QRect ret;
++
++    TBBUTTON buttonData;
++    DWORD processID = 0;
++    HWND trayHandle = FindWindow(L"Shell_TrayWnd", NULL);
++
++    //find the toolbar used in the notification area
++    if (trayHandle) {
++        trayHandle = FindWindowEx(trayHandle, NULL, L"TrayNotifyWnd", NULL);
++        if (trayHandle) {
++            HWND hwnd = FindWindowEx(trayHandle, NULL, L"SysPager", NULL);
++            if (hwnd) {
++                hwnd = FindWindowEx(hwnd, NULL, L"ToolbarWindow32", NULL);
++                if (hwnd)
++                    trayHandle = hwnd;
++            }
++        }
++    }
++
++    if (!trayHandle)
++        return ret;
++
++    GetWindowThreadProcessId(trayHandle, &processID);
++    if (processID <= 0)
++        return ret;
++
++    HANDLE trayProcess = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ, 0, processID);
++    if (!trayProcess)
++        return ret;
++
++    int buttonCount = SendMessage(trayHandle, TB_BUTTONCOUNT, 0, 0);
++    LPVOID data = VirtualAllocEx(trayProcess, NULL, sizeof(TBBUTTON), MEM_COMMIT, PAGE_READWRITE);
++
++    if ( buttonCount < 1 || !data ) {
++        CloseHandle(trayProcess);
++        return ret;
++    }
++
++    //search for our icon among all toolbar buttons
++    for (int toolbarButton = 0; toolbarButton  < buttonCount; ++toolbarButton ) {
++        SIZE_T numBytes = 0;
++        AppData appData = { 0, 0 };
++        SendMessage(trayHandle, TB_GETBUTTON, toolbarButton , (LPARAM)data);
++
++        if (!ReadProcessMemory(trayProcess, data, &buttonData, sizeof(TBBUTTON), &numBytes))
++            continue;
++
++        if (!ReadProcessMemory(trayProcess, (LPVOID) buttonData.dwData, &appData, sizeof(AppData), &numBytes))
++            continue;
++
++        bool isHidden = buttonData.fsState & TBSTATE_HIDDEN;
++
++        if (m_hwnd == appData.hwnd && appData.uID == q_uNOTIFYICONID && !isHidden) {
++            SendMessage(trayHandle, TB_GETITEMRECT, toolbarButton , (LPARAM)data);
++            RECT iconRect = {0, 0, 0, 0};
++            if(ReadProcessMemory(trayProcess, data, &iconRect, sizeof(RECT), &numBytes)) {
++                MapWindowPoints(trayHandle, NULL, (LPPOINT)&iconRect, 2);
++                QRect geometry(iconRect.left + 1, iconRect.top + 1,
++                                iconRect.right - iconRect.left - 2,
++                                iconRect.bottom - iconRect.top - 2);
++                if (geometry.isValid())
++                    ret = geometry;
++                break;
++            }
++        }
++    }
++    VirtualFreeEx(trayProcess, data, 0, MEM_RELEASE);
++    CloseHandle(trayProcess);
++    return ret;
+ }
+ 
+ void QWindowsSystemTrayIcon::showMessage(const QString &title, const QString &messageIn,
+@@ -263,7 +358,9 @@ void QWindowsSystemTrayIcon::showMessage
+         message.append(u' ');
+ 
+     NOTIFYICONDATA tnd;
+-    initNotifyIconData(tnd);
++    memset(&tnd, 0, sizeof(NOTIFYICONDATA));
++    tnd.cbSize = notifyIconSize;
++    tnd.uVersion = version;
+     qStringToLimitedWCharArray(message, tnd.szInfo, 256);
+     qStringToLimitedWCharArray(title, tnd.szInfoTitle, 64);
+ 
+@@ -273,7 +370,8 @@ void QWindowsSystemTrayIcon::showMessage
+     QSize size(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+     const QSize largeIcon(GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
+     const QSize more = icon.actualSize(largeIcon);
+-    if (more.height() > (largeIcon.height() * 3/4) || more.width() > (largeIcon.width() * 3/4)) {
++    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista &&
++        (more.height() > (largeIcon.height() * 3/4) || more.width() > (largeIcon.width() * 3/4))) {
+         tnd.dwInfoFlags |= NIIF_LARGE_ICON;
+         size = largeIcon;
+     }
+@@ -322,9 +420,23 @@ bool QWindowsSystemTrayIcon::ensureInsta
+     // For restoring the tray icon after explorer crashes
+     if (!MYWM_TASKBARCREATED)
+         MYWM_TASKBARCREATED = RegisterWindowMessage(L"TaskbarCreated");
+-    // Allow the WM_TASKBARCREATED message through the UIPI filter
+-    ChangeWindowMessageFilterEx(m_hwnd, MYWM_TASKBARCREATED, MSGFLT_ALLOW, nullptr);
+-    qCDebug(lcQpaTrayIcon) << __FUNCTION__ << this << "MYWM_TASKBARCREATED=" << MYWM_TASKBARCREATED;
++
++    // Allow the WM_TASKBARCREATED message through the UIPI filter on Windows Vista and higher
++    static PtrChangeWindowMessageFilterEx pChangeWindowMessageFilterEx =
++        (PtrChangeWindowMessageFilterEx)QSystemLibrary::resolve(QLatin1String("user32"), "ChangeWindowMessageFilterEx");
++
++    if (pChangeWindowMessageFilterEx) {
++        // Call the safer ChangeWindowMessageFilterEx API if available (Windows 7 onwards)
++        pChangeWindowMessageFilterEx(m_hwnd, MYWM_TASKBARCREATED, Q_MSGFLT_ALLOW, 0);
++    } else {
++        static PtrChangeWindowMessageFilter pChangeWindowMessageFilter =
++            (PtrChangeWindowMessageFilter)QSystemLibrary::resolve(QLatin1String("user32"), "ChangeWindowMessageFilter");
++
++        if (pChangeWindowMessageFilter) {
++            // Call the deprecated ChangeWindowMessageFilter API otherwise
++            pChangeWindowMessageFilter(MYWM_TASKBARCREATED, Q_MSGFLT_ALLOW);
++        }
++    }
+ 
+     QWindowsHwndSystemTrayIconEntry entry{m_hwnd, this};
+     hwndTrayIconEntries()->append(entry);
+@@ -354,7 +466,9 @@ bool QWindowsSystemTrayIcon::setIconVisi
+     if (!isInstalled())
+         return false;
+     NOTIFYICONDATA tnd;
+-    initNotifyIconData(tnd);
++    memset(&tnd, 0, sizeof(NOTIFYICONDATA));
++    tnd.cbSize = notifyIconSize;
++    tnd.uVersion = version;
+     tnd.uID = q_uNOTIFYICONID;
+     tnd.hWnd = m_hwnd;
+     setIconVisibility(tnd, visible);
+@@ -364,7 +478,9 @@ bool QWindowsSystemTrayIcon::setIconVisi
+ bool QWindowsSystemTrayIcon::sendTrayMessage(DWORD msg)
+ {
+     NOTIFYICONDATA tnd;
+-    initNotifyIconData(tnd);
++    memset(&tnd, 0, sizeof(NOTIFYICONDATA));
++    tnd.cbSize = notifyIconSize;
++    tnd.uVersion = version;
+     tnd.uID = q_uNOTIFYICONID;
+     tnd.hWnd = m_hwnd;
+     tnd.uFlags = NIF_SHOWTIP;
+@@ -397,8 +513,14 @@ bool QWindowsSystemTrayIcon::winEvent(co
+     *result = 0;
+     switch (message.message) {
+     case MYWM_NOTIFYICON: {
+-        Q_ASSERT(q_uNOTIFYICONID == HIWORD(message.lParam));
+-        const int trayMessage = LOWORD(message.lParam);
++        int trayMessage;
++        if (version == NOTIFYICON_VERSION_4) {
++            Q_ASSERT(q_uNOTIFYICONID == HIWORD(message.lParam));
++            trayMessage = LOWORD(message.lParam);
++        } else {
++            Q_ASSERT(q_uNOTIFYICONID == message.wParam);
++            trayMessage = message.lParam;
++        }
+         switch (trayMessage) {
+         case NIN_SELECT:
+         case NIN_KEYSELECT:
+@@ -412,10 +534,15 @@ bool QWindowsSystemTrayIcon::winEvent(co
+             emit activated(DoubleClick);     // release we must ignore it
+             break;
+         case WM_CONTEXTMENU: {
++            QPoint globalPos;
++            if (version == NOTIFYICON_VERSION_4)
++                globalPos = QPoint(GET_X_LPARAM(message.wParam), GET_Y_LPARAM(message.wParam));
++            else
++                globalPos = QCursor::pos();
++
+             // QTBUG-67966: Coordinates may be out of any screen in PROCESS_DPI_UNAWARE mode
+             // since hi-res coordinates are delivered in this case (Windows issue).
+             // Default to primary screen with check to prevent a crash.
+-            const QPoint globalPos = QPoint(GET_X_LPARAM(message.wParam), GET_Y_LPARAM(message.wParam));
+             const auto &screenManager = QWindowsContext::instance()->screenManager();
+             const QPlatformScreen *screen = screenManager.screenAtDp(globalPos);
+             if (!screen)
+diff -aupr 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.h 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.h
+--- 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.h	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.h	1970-01-01 00:00:00 +0000
+@@ -94,6 +94,8 @@ private:
+     mutable QPointer<QWindowsPopupMenu> m_menu;
+     bool m_ignoreNextMouseRelease = false;
+     bool m_visible = false;
++    uint notifyIconSize;
++    int version;
+ };
+ 
+ #ifndef QT_NO_DEBUG_STREAM
+diff -aupr 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp
+--- 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp	1970-01-01 00:00:00 +0000
+@@ -65,7 +65,6 @@
+ #include <QtCore/qdebug.h>
+ #include <QtCore/qtextstream.h>
+ #include <QtCore/qoperatingsystemversion.h>
+-#include <QtCore/qsysinfo.h>
+ #include <QtCore/qcache.h>
+ #include <QtCore/qthread.h>
+ #include <QtCore/qmutex.h>
+@@ -459,7 +458,12 @@ static inline QStringList iconThemeSearc
+ 
+ static inline QStringList styleNames()
+ {
+-    return { QStringLiteral("WindowsVista"), QStringLiteral("Windows") };
++    QStringList result;
++    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista)
++        result.append(QStringLiteral("WindowsVista"));
++    result.append(QStringLiteral("WindowsXP"));
++    result.append(QStringLiteral("Windows"));
++    return result;
+ }
+ 
+ static inline int uiEffects()
+@@ -773,13 +777,15 @@ QPixmap QWindowsTheme::standardPixmap(St
+         break;
+     }
+ 
+-    if (stockId != SIID_INVALID) {
++    if (stockId != SIID_INVALID
++        && QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista
++        && QWindowsContext::shell32dll.sHGetStockIconInfo) {
+         QPixmap pixmap;
+         SHSTOCKICONINFO iconInfo;
+         memset(&iconInfo, 0, sizeof(iconInfo));
+         iconInfo.cbSize = sizeof(iconInfo);
+         stockFlags |= (pixmapSize.width() > 16 ? SHGFI_LARGEICON : SHGFI_SMALLICON);
+-        if (SHGetStockIconInfo(stockId, SHGFI_ICON | stockFlags, &iconInfo) == S_OK) {
++        if (QWindowsContext::shell32dll.sHGetStockIconInfo(stockId, SHGFI_ICON | stockFlags, &iconInfo) == S_OK) {
+             pixmap = qt_pixmapFromWinHICON(iconInfo.hIcon);
+             DestroyIcon(iconInfo.hIcon);
+             return pixmap;
+@@ -859,8 +865,13 @@ static QPixmap pixmapFromShellImageList(
+     // For MinGW:
+     static const IID iID_IImageList = {0x46eb5926, 0x582e, 0x4017, {0x9f, 0xdf, 0xe8, 0x99, 0x8d, 0xaa, 0x9, 0x50}};
+ 
++    if (!QWindowsContext::shell32dll.sHGetImageList)
++        return result;
++    if (iImageList == SHIL_JUMBO && QOperatingSystemVersion::current() < QOperatingSystemVersion::WindowsVista)
++        return result;
++
+     IImageList *imageList = nullptr;
+-    HRESULT hr = SHGetImageList(iImageList, iID_IImageList, reinterpret_cast<void **>(&imageList));
++    HRESULT hr = QWindowsContext::shell32dll.sHGetImageList(iImageList, iID_IImageList, reinterpret_cast<void **>(&imageList));
+     if (hr != S_OK)
+         return result;
+     HICON hIcon;
+diff -aupr 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
+--- 5.15.9-orig/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp	1970-01-01 00:00:00 +0000
+@@ -79,6 +79,7 @@
+ #include <QtCore/qoperatingsystemversion.h>
+ 
+ #include <dwmapi.h>
++#include <QtCore/private/qsystemlibrary_p.h>
+ 
+ #if QT_CONFIG(vulkan)
+ #include "qwindowsvulkaninstance.h"
+@@ -86,6 +87,32 @@
+ 
+ QT_BEGIN_NAMESPACE
+ 
++static bool dwmApiResolved = false;
++
++typedef BOOL (WINAPI *PtrDwmIsCompositionEnabled)(BOOL *);
++typedef HRESULT (WINAPI *PtrDwmEnableBlurBehindWindow)(HWND, const void *);
++typedef HRESULT (WINAPI *PtrDwmGetWindowAttribute)(HWND, DWORD, void *, DWORD);
++typedef HRESULT (WINAPI *PtrDwmSetWindowAttribute)(HWND, DWORD, const void *, DWORD);
++
++static PtrDwmIsCompositionEnabled ptrDwmIsCompositionEnabled;
++static PtrDwmEnableBlurBehindWindow ptrDwmEnableBlurBehindWindow;
++static PtrDwmGetWindowAttribute ptrDwmGetWindowAttribute;
++static PtrDwmSetWindowAttribute ptrDwmSetWindowAttribute;
++
++static void resolveDwmApi()
++{
++    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista) {
++        QSystemLibrary library(QStringLiteral("dwmapi"));
++        if (library.load()) {
++            ptrDwmIsCompositionEnabled = (PtrDwmIsCompositionEnabled) library.resolve("DwmIsCompositionEnabled");
++            ptrDwmEnableBlurBehindWindow = (PtrDwmEnableBlurBehindWindow) library.resolve("DwmEnableBlurBehindWindow");
++            ptrDwmGetWindowAttribute = (PtrDwmGetWindowAttribute) library.resolve("DwmGetWindowAttribute");
++            ptrDwmSetWindowAttribute = (PtrDwmSetWindowAttribute) library.resolve("DwmSetWindowAttribute");
++        }
++    }
++    dwmApiResolved = true;
++}
++
+ using QWindowCreationContextPtr = QSharedPointer<QWindowCreationContext>;
+ 
+ enum {
+@@ -358,8 +385,12 @@ static inline bool windowIsAccelerated(c
+ 
+ static bool applyBlurBehindWindow(HWND hwnd)
+ {
++    if (!dwmApiResolved) resolveDwmApi();
++    if (!ptrDwmIsCompositionEnabled || !ptrDwmEnableBlurBehindWindow)
++        return false;
++    
+     BOOL compositionEnabled;
+-    if (DwmIsCompositionEnabled(&compositionEnabled) != S_OK)
++    if (ptrDwmIsCompositionEnabled(&compositionEnabled) != S_OK)
+         return false;
+ 
+     DWM_BLURBEHIND blurBehind = {0, 0, nullptr, 0};
+@@ -373,7 +404,7 @@ static bool applyBlurBehindWindow(HWND h
+         blurBehind.fEnable = FALSE;
+     }
+ 
+-    const bool result = DwmEnableBlurBehindWindow(hwnd, &blurBehind) == S_OK;
++    const bool result = ptrDwmEnableBlurBehindWindow(hwnd, &blurBehind) == S_OK;
+ 
+     if (blurBehind.hRgnBlur)
+         DeleteObject(blurBehind.hRgnBlur);
+@@ -1362,7 +1393,7 @@ QWindowsWindow::~QWindowsWindow()
+ {
+     setFlag(WithinDestroy);
+     if (testFlag(TouchRegistered))
+-        UnregisterTouchWindow(m_data.hwnd);
++        QWindowsContext::user32dll.unregisterTouchWindow(m_data.hwnd);
+     destroyWindow();
+     destroyIcon();
+ }
+@@ -2063,8 +2094,10 @@ void QWindowsWindow::releaseDC()
+ 
+ static inline bool dwmIsCompositionEnabled()
+ {
+-    BOOL dWmCompositionEnabled = FALSE;
+-    return SUCCEEDED(DwmIsCompositionEnabled(&dWmCompositionEnabled)) && dWmCompositionEnabled == TRUE;
++    if (!dwmApiResolved) resolveDwmApi();
++    if (!ptrDwmIsCompositionEnabled) return false;
++    BOOL flag = FALSE;
++    return SUCCEEDED(ptrDwmIsCompositionEnabled(&flag)) && flag == TRUE;
+ }
+ 
+ static inline bool isSoftwareGl()
+@@ -2933,10 +2966,12 @@ enum : WORD {
+ 
+ static bool queryDarkBorder(HWND hwnd)
+ {
++    if (!dwmApiResolved) resolveDwmApi();
++    if (!ptrDwmGetWindowAttribute) return false;
+     BOOL result = FALSE;
+     const bool ok =
+-        SUCCEEDED(DwmGetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, &result, sizeof(result)))
+-        || SUCCEEDED(DwmGetWindowAttribute(hwnd, DwmwaUseImmersiveDarkModeBefore20h1, &result, sizeof(result)));
++        SUCCEEDED(ptrDwmGetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, &result, sizeof(result)))
++        || SUCCEEDED(ptrDwmGetWindowAttribute(hwnd, DwmwaUseImmersiveDarkModeBefore20h1, &result, sizeof(result)));
+     if (!ok)
+         qWarning("%s: Unable to retrieve dark window border setting.", __FUNCTION__);
+     return result == TRUE;
+@@ -2944,10 +2979,12 @@ static bool queryDarkBorder(HWND hwnd)
+ 
+ bool QWindowsWindow::setDarkBorderToWindow(HWND hwnd, bool d)
+ {
++    if (!dwmApiResolved) resolveDwmApi();
++    if (!ptrDwmSetWindowAttribute) return false;
+     const BOOL darkBorder = d ? TRUE : FALSE;
+     const bool ok =
+-        SUCCEEDED(DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, &darkBorder, sizeof(darkBorder)))
+-        || SUCCEEDED(DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkModeBefore20h1, &darkBorder, sizeof(darkBorder)));
++        SUCCEEDED(ptrDwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, &darkBorder, sizeof(darkBorder)))
++        || SUCCEEDED(ptrDwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkModeBefore20h1, &darkBorder, sizeof(darkBorder)));
+     if (!ok)
+         qWarning("%s: Unable to set dark window border.", __FUNCTION__);
+     return ok;
+@@ -3057,13 +3094,15 @@ void QWindowsWindow::registerTouchWindow
+ {
+     if ((QWindowsContext::instance()->systemInfo() & QWindowsContext::SI_SupportsTouch)
+         && !testFlag(TouchRegistered)) {
++        if (!QWindowsContext::user32dll.initTouch())
++            return;
+         ULONG touchFlags = 0;
+-        const bool ret = IsTouchWindow(m_data.hwnd, &touchFlags);
++        const bool ret = QWindowsContext::user32dll.isTouchWindow(m_data.hwnd, &touchFlags);
+         // Return if it is not a touch window or the flags are already set by a hook
+         // such as HCBT_CREATEWND
+         if (ret || touchFlags != 0)
+             return;
+-        if (RegisterTouchWindow(m_data.hwnd, ULONG(touchTypes)))
++        if (QWindowsContext::user32dll.registerTouchWindow(m_data.hwnd, ULONG(touchTypes)))
+             setFlag(TouchRegistered);
+         else
+             qErrnoWarning("RegisterTouchWindow() failed for window '%s'.", qPrintable(window()->objectName()));
+diff -aupr 5.15.9-orig/qtbase/src/plugins/styles/windowsvista/main.cpp 5.15.9-x32/qtbase/src/plugins/styles/windowsvista/main.cpp
+--- 5.15.9-orig/qtbase/src/plugins/styles/windowsvista/main.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/styles/windowsvista/main.cpp	1970-01-01 00:00:00 +0000
+@@ -40,6 +40,7 @@
+ #include <QtWidgets/private/qtwidgetsglobal_p.h>
+ #include <QtWidgets/qstyleplugin.h>
+ #include "qwindowsvistastyle_p.h"
++#include "qwindowsxpstyle_p.h"
+ 
+ QT_BEGIN_NAMESPACE
+ 
+@@ -56,6 +57,9 @@ QStyle *QWindowsVistaStylePlugin::create
+     if (key.compare(QLatin1String("windowsvista"), Qt::CaseInsensitive) == 0)
+         return new QWindowsVistaStyle();
+ 
++    if (key.compare(QLatin1String("windowsxp"), Qt::CaseInsensitive) == 0)
++        return new QWindowsXPStyle();
++
+     return nullptr;
+ }
+ 
+diff -aupr 5.15.9-orig/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp 5.15.9-x32/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp
+--- 5.15.9-orig/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp	1970-01-01 00:00:00 +0000
+@@ -83,7 +83,9 @@ static const int windowsRightBorder     
+ */
+ bool QWindowsVistaStylePrivate::useVista()
+ {
+-    return QWindowsVistaStylePrivate::useXP();
++    return QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista
++           && QWindowsVistaStylePrivate::useXP()
++           && QWindowsVistaStylePrivate::pGetThemeTransitionDuration != nullptr;
+ }
+ 
+ /* \internal
+@@ -387,7 +389,7 @@ void QWindowsVistaStyle::drawPrimitive(P
+ 
+                     // Retrieve the transition time between the states from the system.
+                     if (theme
+-                        && SUCCEEDED(GetThemeTransitionDuration(theme, partId, fromState, toState,
++                        && SUCCEEDED(QWindowsXPStylePrivate::pGetThemeTransitionDuration(theme, partId, fromState, toState,
+                                                                 TMT_TRANSITIONDURATIONS, &duration))) {
+                         t->setDuration(int(duration));
+                     }
+@@ -895,7 +897,7 @@ void QWindowsVistaStyle::drawControl(Con
+ 
+                 int fromState = buttonStateId(oldState, BP_PUSHBUTTON);
+                 int toState = buttonStateId(option->state, BP_PUSHBUTTON);
+-                if (GetThemeTransitionDuration(theme, BP_PUSHBUTTON, fromState, toState, TMT_TRANSITIONDURATIONS, &duration) == S_OK)
++                if (QWindowsXPStylePrivate::pGetThemeTransitionDuration(theme, BP_PUSHBUTTON, fromState, toState, TMT_TRANSITIONDURATIONS, &duration) == S_OK)
+                     t->setDuration(int(duration));
+                 else
+                     t->setDuration(0);
+diff -aupr 5.15.9-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp 5.15.9-x32/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp
+--- 5.15.9-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp	1970-01-01 00:00:00 +0000
+@@ -42,6 +42,7 @@
+ #include <private/qobject_p.h>
+ #include <private/qpaintengine_raster_p.h>
+ #include <private/qapplication_p.h>
++#include <private/qsystemlibrary_p.h>
+ #include <qpa/qplatformnativeinterface.h>
+ #include <private/qstylehelper_p.h>
+ #include <private/qwidget_p.h>
+@@ -53,6 +54,7 @@
+ #include <qpixmapcache.h>
+ #include <private/qapplication_p.h>
+ #include <qpa/qplatformnativeinterface.h>
++#include <qoperatingsystemversion.h>
+ 
+ #if QT_CONFIG(toolbutton)
+ #include <qtoolbutton.h>
+@@ -90,6 +92,77 @@
+ 
+ QT_BEGIN_NAMESPACE
+ 
++// Runtime resolved theme engine function calls
++
++QWindowsUxThemeLib::PtrIsAppThemed QWindowsUxThemeLib::pIsAppThemed = nullptr;
++QWindowsUxThemeLib::PtrIsThemeActive QWindowsUxThemeLib::pIsThemeActive = nullptr;
++QWindowsUxThemeLib::PtrOpenThemeData QWindowsUxThemeLib::pOpenThemeData = nullptr;
++QWindowsUxThemeLib::PtrCloseThemeData QWindowsUxThemeLib::pCloseThemeData = nullptr;
++QWindowsUxThemeLib::PtrDrawThemeBackground QWindowsUxThemeLib::pDrawThemeBackground = nullptr;
++QWindowsUxThemeLib::PtrDrawThemeBackgroundEx QWindowsUxThemeLib::pDrawThemeBackgroundEx = nullptr;
++QWindowsUxThemeLib::PtrGetCurrentThemeName QWindowsUxThemeLib::pGetCurrentThemeName = nullptr;
++QWindowsUxThemeLib::PtrGetThemeBool QWindowsUxThemeLib::pGetThemeBool = nullptr;
++QWindowsUxThemeLib::PtrGetThemeColor QWindowsUxThemeLib::pGetThemeColor = nullptr;
++QWindowsUxThemeLib::PtrGetThemeEnumValue QWindowsUxThemeLib::pGetThemeEnumValue = nullptr;
++QWindowsUxThemeLib::PtrGetThemeFilename QWindowsUxThemeLib::pGetThemeFilename = nullptr;
++QWindowsUxThemeLib::PtrGetThemeFont QWindowsUxThemeLib::pGetThemeFont = nullptr;
++QWindowsUxThemeLib::PtrGetThemeInt QWindowsUxThemeLib::pGetThemeInt = nullptr;
++QWindowsUxThemeLib::PtrGetThemeIntList QWindowsUxThemeLib::pGetThemeIntList = nullptr;
++QWindowsUxThemeLib::PtrGetThemeMargins QWindowsUxThemeLib::pGetThemeMargins = nullptr;
++QWindowsUxThemeLib::PtrGetThemeMetric QWindowsUxThemeLib::pGetThemeMetric = nullptr;
++QWindowsUxThemeLib::PtrGetThemePartSize QWindowsUxThemeLib::pGetThemePartSize = nullptr;
++QWindowsUxThemeLib::PtrGetThemePosition QWindowsUxThemeLib::pGetThemePosition = nullptr;
++QWindowsUxThemeLib::PtrGetThemePropertyOrigin QWindowsUxThemeLib::pGetThemePropertyOrigin = nullptr;
++QWindowsUxThemeLib::PtrGetThemeRect QWindowsUxThemeLib::pGetThemeRect = nullptr;
++QWindowsUxThemeLib::PtrGetThemeString QWindowsUxThemeLib::pGetThemeString = nullptr;
++QWindowsUxThemeLib::PtrGetThemeBackgroundRegion QWindowsUxThemeLib::pGetThemeBackgroundRegion = nullptr;
++QWindowsUxThemeLib::PtrGetThemeDocumentationProperty QWindowsUxThemeLib::pGetThemeDocumentationProperty = nullptr;
++QWindowsUxThemeLib::PtrIsThemeBackgroundPartiallyTransparent QWindowsUxThemeLib::pIsThemeBackgroundPartiallyTransparent = nullptr;
++QWindowsUxThemeLib::PtrSetWindowTheme QWindowsUxThemeLib::pSetWindowTheme = nullptr;
++QWindowsUxThemeLib::PtrGetThemeTransitionDuration QWindowsUxThemeLib::pGetThemeTransitionDuration = nullptr;
++
++bool QWindowsUxThemeLib::resolveSymbols()
++{
++    static bool tried = false;
++    if (tried)
++        return pIsAppThemed != nullptr;
++    tried = true;
++    QSystemLibrary themeLib(QLatin1String("uxtheme"));
++    if (!themeLib.load())
++        return false;
++    pIsAppThemed = (PtrIsAppThemed)themeLib.resolve("IsAppThemed");
++    if (!pIsAppThemed)
++        return false;
++    pIsThemeActive          = (PtrIsThemeActive         )themeLib.resolve("IsThemeActive");
++    pGetThemePartSize       = (PtrGetThemePartSize      )themeLib.resolve("GetThemePartSize");
++    pOpenThemeData          = (PtrOpenThemeData         )themeLib.resolve("OpenThemeData");
++    pCloseThemeData         = (PtrCloseThemeData        )themeLib.resolve("CloseThemeData");
++    pDrawThemeBackground    = (PtrDrawThemeBackground   )themeLib.resolve("DrawThemeBackground");
++    pDrawThemeBackgroundEx  = (PtrDrawThemeBackgroundEx )themeLib.resolve("DrawThemeBackgroundEx");
++    pGetCurrentThemeName    = (PtrGetCurrentThemeName   )themeLib.resolve("GetCurrentThemeName");
++    pGetThemeBool           = (PtrGetThemeBool          )themeLib.resolve("GetThemeBool");
++    pGetThemeColor          = (PtrGetThemeColor         )themeLib.resolve("GetThemeColor");
++    pGetThemeEnumValue      = (PtrGetThemeEnumValue     )themeLib.resolve("GetThemeEnumValue");
++    pGetThemeFilename       = (PtrGetThemeFilename      )themeLib.resolve("GetThemeFilename");
++    pGetThemeFont           = (PtrGetThemeFont          )themeLib.resolve("GetThemeFont");
++    pGetThemeInt            = (PtrGetThemeInt           )themeLib.resolve("GetThemeInt");
++    pGetThemeIntList        = (PtrGetThemeIntList       )themeLib.resolve("GetThemeIntList");
++    pGetThemeMargins        = (PtrGetThemeMargins       )themeLib.resolve("GetThemeMargins");
++    pGetThemeMetric         = (PtrGetThemeMetric        )themeLib.resolve("GetThemeMetric");
++    pGetThemePartSize       = (PtrGetThemePartSize      )themeLib.resolve("GetThemePartSize");
++    pGetThemePosition       = (PtrGetThemePosition      )themeLib.resolve("GetThemePosition");
++    pGetThemePropertyOrigin = (PtrGetThemePropertyOrigin)themeLib.resolve("GetThemePropertyOrigin");
++    pGetThemeRect           = (PtrGetThemeRect          )themeLib.resolve("GetThemeRect");
++    pGetThemeString         = (PtrGetThemeString        )themeLib.resolve("GetThemeString");
++    pGetThemeBackgroundRegion              = (PtrGetThemeBackgroundRegion             )themeLib.resolve("GetThemeBackgroundRegion");
++    pGetThemeDocumentationProperty         = (PtrGetThemeDocumentationProperty        )themeLib.resolve("GetThemeDocumentationProperty");
++    pIsThemeBackgroundPartiallyTransparent = (PtrIsThemeBackgroundPartiallyTransparent)themeLib.resolve("IsThemeBackgroundPartiallyTransparent");
++    pSetWindowTheme         = (PtrSetWindowTheme        )themeLib.resolve("SetWindowTheme");
++    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista)
++        pGetThemeTransitionDuration = (PtrGetThemeTransitionDuration)themeLib.resolve("GetThemeTransitionDuration");
++    return true;
++}
++
+ // General const values
+ static const int windowsItemFrame        =  2; // menu item frame width
+ static const int windowsItemHMargin      =  3; // menu item hor text margin
+@@ -174,7 +247,7 @@ RECT XPThemeData::toRECT(const QRect &qr
+ */
+ HRGN XPThemeData::mask(QWidget *widget)
+ {
+-    if (!IsThemeBackgroundPartiallyTransparent(handle(), partId, stateId))
++    if (!QWindowsXPStylePrivate::pIsThemeBackgroundPartiallyTransparent(handle(), partId, stateId))
+         return nullptr;
+ 
+     HRGN hrgn;
+@@ -182,7 +255,7 @@ HRGN XPThemeData::mask(QWidget *widget)
+     if (widget)
+         dc = hdcForWidgetBackingStore(widget);
+     RECT nativeRect = toRECT(rect);
+-    GetThemeBackgroundRegion(handle(), dc, partId, stateId, &nativeRect, &hrgn);
++    QWindowsXPStylePrivate::pGetThemeBackgroundRegion(handle(), dc, partId, stateId, &nativeRect, &hrgn);
+     return hrgn;
+ }
+ 
+@@ -225,10 +298,10 @@ static HRGN qt_hrgn_from_qregion(const Q
+ */
+ bool QWindowsXPStylePrivate::useXP(bool update)
+ {
+-    if (update) {
+-        use_xp = IsThemeActive() && (IsAppThemed() || !QCoreApplication::instance())
++    if (update)
++        use_xp = QWindowsUxThemeLib::resolveSymbols() &&
++                 pIsThemeActive() && (pIsAppThemed() || !QCoreApplication::instance())
+                  && !QWindowsStylePrivate::isDarkMode();
+-    }
+     return use_xp;
+ }
+ 
+@@ -307,7 +380,7 @@ bool QWindowsXPStylePrivate::initVistaTr
+         qWarning("Unable to create the treeview helper window.");
+         return false;
+     }
+-    if (FAILED(SetWindowTheme(m_vistaTreeViewHelper, L"explorer", nullptr))) {
++    if (FAILED(pSetWindowTheme(m_vistaTreeViewHelper, L"explorer", nullptr))) {
+         qErrnoWarning("SetWindowTheme() failed.");
+         cleanupVistaTreeViewTheming();
+         return false;
+@@ -349,7 +422,7 @@ HTHEME QWindowsXPStylePrivate::createThe
+         const wchar_t *name = themeNames[theme];
+         if (theme == VistaTreeViewTheme && QWindowsXPStylePrivate::initVistaTreeViewTheming())
+             hwnd = QWindowsXPStylePrivate::m_vistaTreeViewHelper;
+-        m_themes[theme] = OpenThemeData(hwnd, name);
++        m_themes[theme] = pOpenThemeData(hwnd, name);
+         if (Q_UNLIKELY(!m_themes[theme]))
+             qErrnoWarning("OpenThemeData() failed for theme %d (%s).",
+                           theme, qPrintable(themeName(theme)));
+@@ -486,8 +559,8 @@ HBITMAP QWindowsXPStylePrivate::buffer(i
+ */
+ bool QWindowsXPStylePrivate::isTransparent(XPThemeData &themeData)
+ {
+-    return IsThemeBackgroundPartiallyTransparent(themeData.handle(), themeData.partId,
+-                                                 themeData.stateId);
++    return pIsThemeBackgroundPartiallyTransparent(themeData.handle(), themeData.partId,
++                                                  themeData.stateId);
+ }
+ 
+ 
+@@ -499,8 +572,8 @@ QRegion QWindowsXPStylePrivate::region(X
+     HRGN hRgn = nullptr;
+     const qreal factor = QWindowsStylePrivate::nativeMetricScaleFactor(themeData.widget);
+     RECT rect = themeData.toRECT(QRect(themeData.rect.topLeft() / factor, themeData.rect.size() / factor));
+-    if (!SUCCEEDED(GetThemeBackgroundRegion(themeData.handle(), bufferHDC(), themeData.partId,
+-                                            themeData.stateId, &rect, &hRgn))) {
++    if (!SUCCEEDED(pGetThemeBackgroundRegion(themeData.handle(), bufferHDC(), themeData.partId,
++                                             themeData.stateId, &rect, &hRgn))) {
+         return QRegion();
+     }
+ 
+@@ -773,7 +846,7 @@ bool QWindowsXPStylePrivate::drawBackgro
+                           | (themeData.noContent ? DTBG_OMITCONTENT : 0)
+                           | (themeData.mirrorHorizontally ? DTBG_MIRRORDC : 0);
+ 
+-    const HRESULT result = DrawThemeBackgroundEx(themeData.handle(), dc, themeData.partId, themeData.stateId, &(drawRECT), &drawOptions);
++    const HRESULT result = pDrawThemeBackgroundEx(themeData.handle(), dc, themeData.partId, themeData.stateId, &(drawRECT), &drawOptions);
+     SelectClipRgn(dc, nullptr);
+     DeleteObject(hrgn);
+     return SUCCEEDED(result);
+@@ -867,16 +940,16 @@ bool QWindowsXPStylePrivate::drawBackgro
+         COLORREF tmt_transparentcolor = 0x0;
+         PROPERTYORIGIN proporigin = PO_NOTFOUND;
+         GetThemeBool(themeData.handle(), themeData.partId, themeData.stateId, TMT_BORDERONLY, &tmt_borderonly);
+-        GetThemeColor(themeData.handle(), themeData.partId, themeData.stateId, TMT_TRANSPARENTCOLOR, &tmt_transparentcolor);
+-        GetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, TMT_CAPTIONMARGINS, &proporigin);
++        pGetThemeColor(themeData.handle(), themeData.partId, themeData.stateId, TMT_TRANSPARENTCOLOR, &tmt_transparentcolor);
++        pGetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, TMT_CAPTIONMARGINS, &proporigin);
+ 
+         partIsTransparent = isTransparent(themeData);
+ 
+         potentialInvalidAlpha = false;
+-        GetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, TMT_GLYPHTYPE, &proporigin);
++        pGetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, TMT_GLYPHTYPE, &proporigin);
+         if (proporigin == PO_PART || proporigin == PO_STATE) {
+             int tmt_glyphtype = GT_NONE;
+-            GetThemeEnumValue(themeData.handle(), themeData.partId, themeData.stateId, TMT_GLYPHTYPE, &tmt_glyphtype);
++            pGetThemeEnumValue(themeData.handle(), themeData.partId, themeData.stateId, TMT_GLYPHTYPE, &tmt_glyphtype);
+             potentialInvalidAlpha = partIsTransparent && tmt_glyphtype == GT_IMAGEGLYPH;
+         }
+ 
+@@ -906,8 +979,8 @@ bool QWindowsXPStylePrivate::drawBackgro
+ 
+         int borderSize = 0;
+         PROPERTYORIGIN origin = PO_NOTFOUND;
+-        GetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, TMT_BORDERSIZE, &origin);
+-        GetThemeInt(themeData.handle(), themeData.partId, themeData.stateId, TMT_BORDERSIZE, &borderSize);
++        pGetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, TMT_BORDERSIZE, &origin);
++        pGetThemeInt(themeData.handle(), themeData.partId, themeData.stateId, TMT_BORDERSIZE, &borderSize);
+         borderSize *= additionalDevicePixelRatio;
+ 
+         // Clip away border region
+@@ -954,7 +1027,7 @@ bool QWindowsXPStylePrivate::drawBackgro
+ 
+         // Drawing the part into the backing store
+         RECT wRect(themeData.toRECT(area));
+-        DrawThemeBackgroundEx(themeData.handle(), dc, themeData.partId, themeData.stateId, &wRect, &drawOptions);
++        pDrawThemeBackgroundEx(themeData.handle(), dc, themeData.partId, themeData.stateId, &wRect, &drawOptions);
+ 
+         // If not cached, analyze the buffer data to figure
+         // out alpha type, and if it contains data
+@@ -1171,12 +1244,12 @@ void QWindowsXPStyle::polish(QWidget *wi
+         // Get text color for group box labels
+         COLORREF cref;
+         XPThemeData theme(widget, nullptr, QWindowsXPStylePrivate::ButtonTheme, 0, 0);
+-        GetThemeColor(theme.handle(), BP_GROUPBOX, GBS_NORMAL, TMT_TEXTCOLOR, &cref);
++        QWindowsXPStylePrivate::pGetThemeColor(theme.handle(), BP_GROUPBOX, GBS_NORMAL, TMT_TEXTCOLOR, &cref);
+         d->groupBoxTextColor = qRgb(GetRValue(cref), GetGValue(cref), GetBValue(cref));
+-        GetThemeColor(theme.handle(), BP_GROUPBOX, GBS_DISABLED, TMT_TEXTCOLOR, &cref);
++        QWindowsXPStylePrivate::pGetThemeColor(theme.handle(), BP_GROUPBOX, GBS_DISABLED, TMT_TEXTCOLOR, &cref);
+         d->groupBoxTextColorDisabled = qRgb(GetRValue(cref), GetGValue(cref), GetBValue(cref));
+         // Where does this color come from?
+-        //GetThemeColor(theme.handle(), TKP_TICS, TSS_NORMAL, TMT_COLOR, &cref);
++        //pGetThemeColor(theme.handle(), TKP_TICS, TSS_NORMAL, TMT_COLOR, &cref);
+         d->sliderTickColor = qRgb(165, 162, 148);
+         d->hasInitColors = true;
+     }
+@@ -1301,7 +1374,7 @@ QRect QWindowsXPStyle::subElementRect(Su
+                     int border = proxy()->pixelMetric(PM_DefaultFrameWidth, btn, widget);
+                     rect = option->rect.adjusted(border, border, -border, -border);
+ 
+-                    if (SUCCEEDED(GetThemeMargins(theme, nullptr, BP_PUSHBUTTON, stateId, TMT_CONTENTMARGINS, nullptr, &borderSize))) {
++                    if (SUCCEEDED(QWindowsXPStylePrivate::pGetThemeMargins(theme, nullptr, BP_PUSHBUTTON, stateId, TMT_CONTENTMARGINS, nullptr, &borderSize))) {
+                         rect.adjust(borderSize.cxLeftWidth, borderSize.cyTopHeight,
+                                     -borderSize.cxRightWidth, -borderSize.cyBottomHeight);
+                         rect = visualRect(option->direction, option->rect, rect);
+@@ -1475,7 +1548,7 @@ void QWindowsXPStyle::drawPrimitive(Prim
+     case PE_IndicatorDockWidgetResizeHandle:
+         return;
+ 
+-case PE_Frame:
++    case PE_Frame:
+     {
+         if (flags & State_Raised)
+             return;
+@@ -1488,10 +1561,10 @@ case PE_Frame:
+         else
+             stateId = ETS_NORMAL;
+         int fillType;
+-        if (GetThemeEnumValue(theme.handle(), partId, stateId, TMT_BGTYPE, &fillType) == S_OK) {
++        if (QWindowsXPStylePrivate::pGetThemeEnumValue(theme.handle(), partId, stateId, TMT_BGTYPE, &fillType) == S_OK) {
+             if (fillType == BT_BORDERFILL) {
+                 COLORREF bcRef;
+-                GetThemeColor(theme.handle(), partId, stateId, TMT_BORDERCOLOR, &bcRef);
++                QWindowsXPStylePrivate::pGetThemeColor(theme.handle(), partId, stateId, TMT_BORDERCOLOR, &bcRef);
+                 QColor bordercolor(qRgb(GetRValue(bcRef), GetGValue(bcRef), GetBValue(bcRef)));
+                 QPen oldPen = p->pen();
+                 // int borderSize = 1;
+@@ -1558,8 +1631,8 @@ case PE_Frame:
+                     return;
+                 }
+                 int bgType;
+-                GetThemeEnumValue(theme.handle(), partId, stateId, TMT_BGTYPE, &bgType);
+-                if( bgType == BT_IMAGEFILE ) {
++                QWindowsXPStylePrivate::pGetThemeEnumValue(theme.handle(), partId, stateId, TMT_BGTYPE, &bgType);
++                if (bgType == BT_IMAGEFILE) {
+                     theme.mirrorHorizontally = hMirrored;
+                     theme.mirrorVertically = vMirrored;
+                     theme.noBorder = noBorder;
+@@ -1571,11 +1644,11 @@ case PE_Frame:
+ 
+                     if (!isEnabled) {
+                         PROPERTYORIGIN origin = PO_NOTFOUND;
+-                        GetThemePropertyOrigin(theme.handle(), theme.partId, theme.stateId, TMT_FILLCOLOR, &origin);
++                        QWindowsXPStylePrivate::pGetThemePropertyOrigin(theme.handle(), theme.partId, theme.stateId, TMT_FILLCOLOR, &origin);
+                         // Use only if the fill property comes from our part
+                         if ((origin == PO_PART || origin == PO_STATE)) {
+                             COLORREF bgRef;
+-                            GetThemeColor(theme.handle(), partId, stateId, TMT_FILLCOLOR, &bgRef);
++                            QWindowsXPStylePrivate::pGetThemeColor(theme.handle(), partId, stateId, TMT_FILLCOLOR, &bgRef);
+                             fillColor = QBrush(qRgb(GetRValue(bgRef), GetGValue(bgRef), GetBValue(bgRef)));
+                         }
+                     }
+@@ -1601,7 +1674,7 @@ case PE_Frame:
+                 wchar_t themeFileName[maxlength];
+                 wchar_t themeColor[maxlength];
+                 // Due to a a scaling issue with the XP Silver theme, tab gradients are not used with it
+-                if (GetCurrentThemeName(themeFileName, maxlength, themeColor, maxlength, nullptr, 0) == S_OK) {
++                if (QWindowsXPStylePrivate::pGetCurrentThemeName(themeFileName, maxlength, themeColor, maxlength, nullptr, 0) == S_OK) {
+                     wchar_t *offset = nullptr;
+                     if ((offset = wcsrchr(themeFileName, QChar(QLatin1Char('\\')).unicode())) != nullptr) {
+                         offset++;
+@@ -2388,10 +2461,10 @@ void QWindowsXPStyle::drawControl(Contro
+                         = p->fontMetrics().elidedText(dwOpt->title, Qt::ElideRight, titleRect.width());
+ 
+                     int result = TST_NONE;
+-                    GetThemeEnumValue(theme.handle(), WP_SMALLCAPTION, isActive ? CS_ACTIVE : CS_INACTIVE, TMT_TEXTSHADOWTYPE, &result);
++                    QWindowsXPStylePrivate::pGetThemeEnumValue(theme.handle(), WP_SMALLCAPTION, isActive ? CS_ACTIVE : CS_INACTIVE, TMT_TEXTSHADOWTYPE, &result);
+                     if (result != TST_NONE) {
+                         COLORREF textShadowRef;
+-                        GetThemeColor(theme.handle(), WP_SMALLCAPTION, isActive ? CS_ACTIVE : CS_INACTIVE, TMT_TEXTSHADOWCOLOR, &textShadowRef);
++                        QWindowsXPStylePrivate::pGetThemeColor(theme.handle(), WP_SMALLCAPTION, isActive ? CS_ACTIVE : CS_INACTIVE, TMT_TEXTSHADOWCOLOR, &textShadowRef);
+                         QColor textShadow = qRgb(GetRValue(textShadowRef), GetGValue(textShadowRef), GetBValue(textShadowRef));
+                         p->setPen(textShadow);
+                         drawItemText(p, titleRect.adjusted(1, 1, 1, 1),
+@@ -3044,7 +3117,7 @@ void QWindowsXPStyle::drawComplexControl
+                     QRect ir = proxy()->subControlRect(CC_TitleBar, tb, SC_TitleBarLabel, widget);
+ 
+                     int result = TST_NONE;
+-                    GetThemeEnumValue(theme.handle(), WP_CAPTION, isActive ? CS_ACTIVE : CS_INACTIVE, TMT_TEXTSHADOWTYPE, &result);
++                    QWindowsXPStylePrivate::pGetThemeEnumValue(theme.handle(), WP_CAPTION, isActive ? CS_ACTIVE : CS_INACTIVE, TMT_TEXTSHADOWTYPE, &result);
+                     if (result != TST_NONE) {
+                         COLORREF textShadowRef;
+                         GetThemeColor(theme.handle(), WP_CAPTION, isActive ? CS_ACTIVE : CS_INACTIVE, TMT_TEXTSHADOWCOLOR, &textShadowRef);
+@@ -3995,7 +4068,7 @@ void QWindowsXPStylePrivate::dumpNativeD
+ static void showProperty(XPThemeData &themeData, const PropPair &prop)
+ {
+     PROPERTYORIGIN origin = PO_NOTFOUND;
+-    GetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &origin);
++    pGetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &origin);
+     const char *originStr;
+     switch(origin) {
+     case PO_STATE:
+@@ -4020,35 +4093,35 @@ static void showProperty(XPThemeData &th
+     case TMT_STRING:
+         {
+             wchar_t buffer[512];
+-            GetThemeString(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, buffer, 512);
++            pGetThemeString(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, buffer, 512);
+             printf("  (%sString)  %-20S: %S\n", originStr, prop.propName, buffer);
+         }
+         break;
+     case TMT_ENUM:
+         {
+             int result = -1;
+-            GetThemeEnumValue(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
++            pGetThemeEnumValue(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
+             printf("  (%sEnum)    %-20S: %d\n", originStr, prop.propName, result);
+         }
+         break;
+     case TMT_INT:
+         {
+             int result = -1;
+-            GetThemeInt(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
++            pGetThemeInt(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
+             printf("  (%sint)     %-20S: %d\n", originStr, prop.propName, result);
+         }
+         break;
+     case TMT_BOOL:
+         {
+             BOOL result = false;
+-            GetThemeBool(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
++            pGetThemeBool(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
+             printf("  (%sbool)    %-20S: %d\n", originStr, prop.propName, result);
+         }
+         break;
+     case TMT_COLOR:
+         {
+             COLORREF result = 0;
+-            GetThemeColor(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
++            pGetThemeColor(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
+             printf("  (%scolor)   %-20S: 0x%08X\n", originStr, prop.propName, result);
+         }
+         break;
+@@ -4056,7 +4129,7 @@ static void showProperty(XPThemeData &th
+         {
+             MARGINS result;
+             memset(&result, 0, sizeof(result));
+-            GetThemeMargins(themeData.handle(), 0, themeData.partId, themeData.stateId, prop.propValue, 0, &result);
++            pGetThemeMargins(themeData.handle(), 0, themeData.partId, themeData.stateId, prop.propValue, 0, &result);
+             printf("  (%smargins) %-20S: (%d, %d, %d, %d)\n", originStr,
+                    prop.propName, result.cxLeftWidth, result.cyTopHeight, result.cxRightWidth, result.cyBottomHeight);
+         }
+@@ -4064,7 +4137,7 @@ static void showProperty(XPThemeData &th
+     case TMT_FILENAME:
+         {
+             wchar_t buffer[512];
+-            GetThemeFilename(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, buffer, 512);
++            pGetThemeFilename(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, buffer, 512);
+             printf("  (%sfilename)%-20S: %S\n", originStr, prop.propName, buffer);
+         }
+         break;
+@@ -4076,9 +4149,9 @@ static void showProperty(XPThemeData &th
+             memset(&result1, 0, sizeof(result1));
+             memset(&result2, 0, sizeof(result2));
+             memset(&result3, 0, sizeof(result3));
+-            GetThemePartSize(themeData.handle(), 0, themeData.partId, themeData.stateId, 0, TS_MIN,  &result1);
+-            GetThemePartSize(themeData.handle(), 0, themeData.partId, themeData.stateId, 0, TS_TRUE, &result2);
+-            GetThemePartSize(themeData.handle(), 0, themeData.partId, themeData.stateId, 0, TS_DRAW, &result3);
++            pGetThemePartSize(themeData.handle(), 0, themeData.partId, themeData.stateId, 0, TS_MIN,  &result1);
++            pGetThemePartSize(themeData.handle(), 0, themeData.partId, themeData.stateId, 0, TS_TRUE, &result2);
++            pGetThemePartSize(themeData.handle(), 0, themeData.partId, themeData.stateId, 0, TS_DRAW, &result3);
+             printf("  (%ssize)    %-20S: Min (%d, %d),  True(%d, %d),  Draw(%d, %d)\n", originStr, prop.propName,
+                    result1.cx, result1.cy, result2.cx, result2.cy, result3.cx, result3.cy);
+         }
+@@ -4087,7 +4160,7 @@ static void showProperty(XPThemeData &th
+         {
+             POINT result;
+             memset(&result, 0, sizeof(result));
+-            GetThemePosition(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
++            pGetThemePosition(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
+             printf("  (%sPosition)%-20S: (%d, %d)\n", originStr, prop.propName, result.x, result.y);
+         }
+         break;
+@@ -4095,7 +4168,7 @@ static void showProperty(XPThemeData &th
+         {
+             RECT result;
+             memset(&result, 0, sizeof(result));
+-            GetThemeRect(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
++            pGetThemeRect(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
+             printf("  (%sRect)    %-20S: (%d, %d, %d, %d)\n", originStr, prop.propName, result.left, result.top, result.right, result.bottom);
+         }
+         break;
+@@ -4103,7 +4176,7 @@ static void showProperty(XPThemeData &th
+         {
+             LOGFONT result;
+             memset(&result, 0, sizeof(result));
+-            GetThemeFont(themeData.handle(), 0, themeData.partId, themeData.stateId, prop.propValue, &result);
++            pGetThemeFont(themeData.handle(), 0, themeData.partId, themeData.stateId, prop.propValue, &result);
+             printf("  (%sFont)    %-20S: %S  height(%d)  width(%d)  weight(%d)\n", originStr, prop.propName,
+                    result.lfFaceName, result.lfHeight, result.lfWidth, result.lfWeight);
+         }
+@@ -4112,7 +4185,7 @@ static void showProperty(XPThemeData &th
+         {
+             INTLIST result;
+             memset(&result, 0, sizeof(result));
+-            GetThemeIntList(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
++            pGetThemeIntList(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &result);
+             printf("  (%sInt list)%-20S: { ", originStr, prop.propName);
+             for (int i = 0; i < result.iValueCount; ++i)
+                 printf("%d ", result.iValues[i]);
+@@ -4164,7 +4237,7 @@ void QWindowsXPStylePrivate::showPropert
+             for (int j = 0; j < all_props.count(); ++j) {
+                 PropPair prop = all_props.at(j);
+                 wchar_t buf[500];
+-                GetThemeDocumentationProperty(themeName, prop.propName, buf, 500);
++                pGetThemeDocumentationProperty(themeName, prop.propName, buf, 500);
+                 printf("%3d: (%4d) %-20S %S\n", j, prop.propValue, prop.propName, buf);
+             }
+         }
+@@ -4174,7 +4247,7 @@ void QWindowsXPStylePrivate::showPropert
+             for (int j = 0; j < all_props.count(); ++j) {
+                 PropPair prop = all_props.at(j);
+                 PROPERTYORIGIN origin = PO_NOTFOUND;
+-                GetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &origin);
++                pGetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &origin);
+                 if (origin == PO_GLOBAL) {
+                     showProperty(themeData, prop);
+                 }
+@@ -4185,7 +4258,7 @@ void QWindowsXPStylePrivate::showPropert
+     for (int j = 0; j < all_props.count(); ++j) {
+         PropPair prop = all_props.at(j);
+         PROPERTYORIGIN origin = PO_NOTFOUND;
+-        GetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &origin);
++        pGetThemePropertyOrigin(themeData.handle(), themeData.partId, themeData.stateId, prop.propValue, &origin);
+         if (origin != PO_NOTFOUND)
+         {
+             showProperty(themeData, prop);
+diff -aupr 5.15.9-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h 5.15.9-x32/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h
+--- 5.15.9-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h	1970-01-01 00:00:00 +0000
+@@ -189,7 +189,66 @@ QDebug operator<<(QDebug d, const ThemeM
+ QDebug operator<<(QDebug d, const ThemeMapData &td);
+ #endif
+ 
+-class QWindowsXPStylePrivate : public QWindowsStylePrivate
++struct QWindowsUxThemeLib
++{
++    typedef bool (WINAPI *PtrIsAppThemed)();
++    typedef bool (WINAPI *PtrIsThemeActive)();
++    typedef HTHEME (WINAPI *PtrOpenThemeData)(HWND hwnd, LPCWSTR pszClassList);
++    typedef HRESULT (WINAPI *PtrCloseThemeData)(HTHEME hTheme);
++    typedef HRESULT (WINAPI *PtrDrawThemeBackground)(HTHEME hTheme, HDC hdc, int iPartId, int iStateId, const RECT *pRect, OPTIONAL const RECT *pClipRect);
++    typedef HRESULT (WINAPI *PtrDrawThemeBackgroundEx)(HTHEME hTheme, HDC hdc, int iPartId, int iStateId, const RECT *pRect, OPTIONAL const DTBGOPTS *pOptions);
++    typedef HRESULT (WINAPI *PtrGetCurrentThemeName)(OUT LPWSTR pszThemeFileName, int cchMaxNameChars, OUT OPTIONAL LPWSTR pszColorBuff, int cchMaxColorChars, OUT OPTIONAL LPWSTR pszSizeBuff, int cchMaxSizeChars);
++    typedef HRESULT (WINAPI *PtrGetThemeDocumentationProperty)(LPCWSTR pszThemeName, LPCWSTR pszPropertyName, OUT LPWSTR pszValueBuff, int cchMaxValChars);
++    typedef HRESULT (WINAPI *PtrGetThemeBool)(HTHEME hTheme, int iPartId, int iStateId, int iPropId, OUT BOOL *pfVal);
++    typedef HRESULT (WINAPI *PtrGetThemeColor)(HTHEME hTheme, int iPartId, int iStateId, int iPropId, OUT COLORREF *pColor);
++    typedef HRESULT (WINAPI *PtrGetThemeEnumValue)(HTHEME hTheme, int iPartId, int iStateId, int iPropId, OUT int *piVal);
++    typedef HRESULT (WINAPI *PtrGetThemeFilename)(HTHEME hTheme, int iPartId, int iStateId, int iPropId, OUT LPWSTR pszThemeFileName, int cchMaxBuffChars);
++    typedef HRESULT (WINAPI *PtrGetThemeFont)(HTHEME hTheme, OPTIONAL HDC hdc, int iPartId, int iStateId, int iPropId, OUT LOGFONT *pFont);
++    typedef HRESULT (WINAPI *PtrGetThemeInt)(HTHEME hTheme, int iPartId, int iStateId, int iPropId, OUT int *piVal);
++    typedef HRESULT (WINAPI *PtrGetThemeIntList)(HTHEME hTheme, int iPartId, int iStateId, int iPropId, OUT INTLIST *pIntList);
++    typedef HRESULT (WINAPI *PtrGetThemeMargins)(HTHEME hTheme, OPTIONAL HDC hdc, int iPartId, int iStateId, int iPropId, OPTIONAL RECT *prc, OUT MARGINS *pMargins);
++    typedef HRESULT (WINAPI *PtrGetThemeMetric)(HTHEME hTheme, OPTIONAL HDC hdc, int iPartId, int iStateId, int iPropId, OUT int *piVal);
++    typedef HRESULT (WINAPI *PtrGetThemePartSize)(HTHEME hTheme, HDC hdc, int iPartId, int iStateId, OPTIONAL RECT *prc, enum THEMESIZE eSize, OUT SIZE *psz);
++    typedef HRESULT (WINAPI *PtrGetThemePosition)(HTHEME hTheme, int iPartId, int iStateId, int iPropId, OUT POINT *pPoint);
++    typedef HRESULT (WINAPI *PtrGetThemePropertyOrigin)(HTHEME hTheme, int iPartId, int iStateId, int iPropId, OUT enum PROPERTYORIGIN *pOrigin);
++    typedef HRESULT (WINAPI *PtrGetThemeRect)(HTHEME hTheme, int iPartId, int iStateId, int iPropId, OUT RECT *pRect);
++    typedef HRESULT (WINAPI *PtrGetThemeString)(HTHEME hTheme, int iPartId, int iStateId, int iPropId, OUT LPWSTR pszBuff, int cchMaxBuffChars);
++    typedef HRESULT (WINAPI *PtrGetThemeBackgroundRegion)(HTHEME hTheme, OPTIONAL HDC hdc, int iPartId, int iStateId, const RECT *pRect, OUT HRGN *pRegion);
++    typedef BOOL (WINAPI *PtrIsThemeBackgroundPartiallyTransparent)(HTHEME hTheme, int iPartId, int iStateId);
++    typedef HRESULT (WINAPI *PtrSetWindowTheme)(HWND hwnd, LPCWSTR pszSubAppName, LPCWSTR pszSubIdList);
++    typedef HRESULT (WINAPI *PtrGetThemeTransitionDuration)(HTHEME hTheme, int iPartId, int iStateFromId, int iStateToId, int iPropId, DWORD *pDuration);
++
++    static bool resolveSymbols();
++
++    static PtrIsAppThemed pIsAppThemed;
++    static PtrIsThemeActive pIsThemeActive;
++    static PtrOpenThemeData pOpenThemeData;
++    static PtrCloseThemeData pCloseThemeData;
++    static PtrDrawThemeBackground pDrawThemeBackground;
++    static PtrDrawThemeBackgroundEx pDrawThemeBackgroundEx;
++    static PtrGetCurrentThemeName pGetCurrentThemeName;
++    static PtrGetThemeBool pGetThemeBool;
++    static PtrGetThemeColor pGetThemeColor;
++    static PtrGetThemeEnumValue pGetThemeEnumValue;
++    static PtrGetThemeFilename pGetThemeFilename;
++    static PtrGetThemeFont pGetThemeFont;
++    static PtrGetThemeInt pGetThemeInt;
++    static PtrGetThemeIntList pGetThemeIntList;
++    static PtrGetThemeMargins pGetThemeMargins;
++    static PtrGetThemeMetric pGetThemeMetric;
++    static PtrGetThemePartSize pGetThemePartSize;
++    static PtrGetThemePosition pGetThemePosition;
++    static PtrGetThemePropertyOrigin pGetThemePropertyOrigin;
++    static PtrGetThemeRect pGetThemeRect;
++    static PtrGetThemeString pGetThemeString;
++    static PtrGetThemeBackgroundRegion pGetThemeBackgroundRegion;
++    static PtrGetThemeDocumentationProperty pGetThemeDocumentationProperty;
++    static PtrIsThemeBackgroundPartiallyTransparent pIsThemeBackgroundPartiallyTransparent;
++    static PtrSetWindowTheme pSetWindowTheme;
++    static PtrGetThemeTransitionDuration pGetThemeTransitionDuration; // Windows Vista onwards.
++};
++
++class QWindowsXPStylePrivate : public QWindowsStylePrivate, public QWindowsUxThemeLib
+ {
+     Q_DECLARE_PUBLIC(QWindowsXPStyle)
+ public:
+diff -aupr 5.15.9-orig/qtbase/src/plugins/styles/windowsvista/windowsvistastyle.json 5.15.9-x32/qtbase/src/plugins/styles/windowsvista/windowsvistastyle.json
+--- 5.15.9-orig/qtbase/src/plugins/styles/windowsvista/windowsvistastyle.json	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/plugins/styles/windowsvista/windowsvistastyle.json	1970-01-01 00:00:00 +0000
+@@ -1,3 +1,3 @@
+ {
+-    "Keys": [ "windowsvista" ]
++    "Keys": [ "windowsvista", "windowsxp" ]
+ }
+diff -aupr 5.15.9-orig/qtbase/src/widgets/dialogs/qfiledialog.cpp 5.15.9-x32/qtbase/src/widgets/dialogs/qfiledialog.cpp
+--- 5.15.9-orig/qtbase/src/widgets/dialogs/qfiledialog.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/widgets/dialogs/qfiledialog.cpp	1970-01-01 00:00:00 +0000
+@@ -726,8 +726,6 @@ bool QFileDialogPrivate::canBeNativeDial
+     // Don't use Q_Q here! This function is called from ~QDialog,
+     // so Q_Q calling q_func() invokes undefined behavior (invalid cast in q_func()).
+     const QDialog * const q = static_cast<const QDialog*>(q_ptr);
+-    if (nativeDialogInUse)
+-        return true;
+     if (QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs)
+         || q->testAttribute(Qt::WA_DontShowOnScreen)
+         || (options->options() & QFileDialog::DontUseNativeDialog)) {
+diff -aupr 5.15.9-orig/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp 5.15.9-x32/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp
+--- 5.15.9-orig/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp	1970-01-01 00:00:00 +0000
+@@ -59,11 +59,16 @@
+ #  include <qt_windows.h>
+ #  ifndef Q_OS_WINRT
+ #      include <shlobj.h>
++#      include <private/qsystemlibrary_p.h>
++#      include <QtCore/QOperatingSystemVersion>
+ #  endif
+ #endif
+ 
+ QT_BEGIN_NAMESPACE
+ 
++typedef HRESULT (WINAPI *PtrSHCreateItemFromParsingName)(PCWSTR, IBindCtx *, const GUID&, void **);
++static PtrSHCreateItemFromParsingName ptrSHCreateItemFromParsingName = nullptr;
++
+ /*!
+     \enum QFileSystemModel::Roles
+     \value FileIconRole
+@@ -1787,11 +1792,24 @@ void QFileSystemModelPrivate::_q_directo
+ #if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+ static QString volumeName(const QString &path)
+ {
++    if (QOperatingSystemVersion::current() < QOperatingSystemVersion::WindowsVista) {
++        wchar_t name[MAX_PATH + 1];
++        //GetVolumeInformation requires to add trailing backslash
++        const QString nodeName = path + QLatin1String("\\");
++        BOOL success = ::GetVolumeInformationW((wchar_t *)(nodeName.utf16()),
++                name, MAX_PATH + 1, NULL, 0, NULL, NULL, 0);
++        return success ? QString::fromWCharArray(name) : QString();
++    }
++    if (!ptrSHCreateItemFromParsingName) {
++        ptrSHCreateItemFromParsingName = reinterpret_cast<PtrSHCreateItemFromParsingName>(
++            QSystemLibrary::resolve(QLatin1String("shell32"), "SHCreateItemFromParsingName"));
++        if (!ptrSHCreateItemFromParsingName)
++            return QString();
++    }
+     IShellItem *item = nullptr;
+     const QString native = QDir::toNativeSeparators(path);
+-    HRESULT hr = SHCreateItemFromParsingName(reinterpret_cast<const wchar_t *>(native.utf16()),
+-                                             nullptr, IID_IShellItem,
+-                                             reinterpret_cast<void **>(&item));
++    HRESULT hr = ptrSHCreateItemFromParsingName(reinterpret_cast<const wchar_t *>(native.utf16()),
++        nullptr, IID_IShellItem, reinterpret_cast<void **>(&item));
+     if (FAILED(hr))
+         return QString();
+     LPWSTR name = nullptr;
+diff -aupr 5.15.9-orig/qtbase/src/widgets/dialogs/qwizard_win.cpp 5.15.9-x32/qtbase/src/widgets/dialogs/qwizard_win.cpp
+--- 5.15.9-orig/qtbase/src/widgets/dialogs/qwizard_win.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/widgets/dialogs/qwizard_win.cpp	1970-01-01 00:00:00 +0000
+@@ -42,6 +42,7 @@
+ #if QT_CONFIG(style_windowsvista)
+ 
+ #include "qwizard_win_p.h"
++#include <private/qsystemlibrary_p.h>
+ #include <private/qapplication_p.h>
+ #include <qpa/qplatformnativeinterface.h>
+ #include "qwizard.h"
+@@ -66,8 +67,40 @@ Q_DECLARE_METATYPE(QMargins)
+ 
+ QT_BEGIN_NAMESPACE
+ 
++typedef BOOL (WINAPI *PtrDwmDefWindowProc)(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *plResult);
++typedef HRESULT (WINAPI *PtrDwmIsCompositionEnabled)(BOOL* pfEnabled);
++typedef HRESULT (WINAPI *PtrDwmExtendFrameIntoClientArea)(HWND hWnd, const MARGINS* pMarInset);
++typedef HRESULT (WINAPI *PtrSetWindowThemeAttribute)(HWND hwnd, enum WINDOWTHEMEATTRIBUTETYPE eAttribute, PVOID pvAttribute, DWORD cbAttribute);
++
++static PtrDwmDefWindowProc pDwmDefWindowProc = nullptr;
++static PtrDwmIsCompositionEnabled pDwmIsCompositionEnabled = nullptr;
++static PtrDwmExtendFrameIntoClientArea pDwmExtendFrameIntoClientArea = nullptr;
++static PtrSetWindowThemeAttribute pSetWindowThemeAttribute = nullptr;
++
++//Theme related
++typedef bool (WINAPI *PtrIsAppThemed)();
++typedef bool (WINAPI *PtrIsThemeActive)();
++typedef HANDLE (WINAPI *PtrOpenThemeData)(HWND hwnd, LPCWSTR pszClassList);
++typedef HRESULT (WINAPI *PtrCloseThemeData)(HANDLE hTheme);
++typedef HRESULT (WINAPI *PtrGetThemeSysFont)(HANDLE hTheme, int iFontId, LOGFONTW *plf);
++typedef HRESULT (WINAPI *PtrDrawThemeTextEx)(HANDLE hTheme, HDC hdc, int iPartId, int iStateId, LPCWSTR pszText, int cchText, DWORD dwTextFlags, LPRECT pRect, const DTTOPTS *pOptions);
++typedef HRESULT (WINAPI *PtrDrawThemeBackground)(HANDLE hTheme, HDC hdc, int iPartId, int iStateId, const RECT *pRect, OPTIONAL const RECT *pClipRect);
++typedef HRESULT (WINAPI *PtrGetThemePartSize)(HANDLE hTheme, HDC hdc, int iPartId, int iStateId, OPTIONAL RECT *prc, enum THEMESIZE eSize, OUT SIZE *psz);
++typedef HRESULT (WINAPI *PtrGetThemeColor)(HANDLE hTheme, int iPartId, int iStateId, int iPropId, OUT COLORREF *pColor);
++
++static PtrIsAppThemed pIsAppThemed = 0;
++static PtrIsThemeActive pIsThemeActive = 0;
++static PtrOpenThemeData pOpenThemeData = 0;
++static PtrCloseThemeData pCloseThemeData = 0;
++static PtrGetThemeSysFont pGetThemeSysFont = 0;
++static PtrDrawThemeTextEx pDrawThemeTextEx = 0;
++static PtrDrawThemeBackground pDrawThemeBackground = 0;
++static PtrGetThemePartSize pGetThemePartSize = 0;
++static PtrGetThemeColor pGetThemeColor = 0;
++
+ int QVistaHelper::instanceCount = 0;
+ int QVistaHelper::m_devicePixelRatio = 1;
++bool QVistaHelper::isVista = false;
+ QVistaHelper::VistaState QVistaHelper::cachedVistaState = QVistaHelper::Dirty;
+ 
+ /******************************************************************************
+@@ -110,7 +143,7 @@ void QVistaBackButton::paintEvent(QPaint
+ {
+     QPainter p(this);
+     QRect r = rect();
+-    const HANDLE theme = OpenThemeData(0, L"Navigation");
++    const HANDLE theme = pOpenThemeData(0, L"Navigation");
+     //RECT rect;
+     QPoint origin;
+     const HDC hdc = QVistaHelper::backingStoreDC(parentWidget(), &origin);
+@@ -135,9 +168,9 @@ void QVistaBackButton::paintEvent(QPaint
+     else if (underMouse())
+         state = NAV_BB_HOT;
+ 
+-    DrawThemeBackground(theme, hdc,
+-                        layoutDirection() == Qt::LeftToRight ? NAV_BACKBUTTON : NAV_FORWARDBUTTON,
+-                        state, &clipRect, &clipRect);
++    pDrawThemeBackground(theme, hdc,
++                         layoutDirection() == Qt::LeftToRight ? NAV_BACKBUTTON : NAV_FORWARDBUTTON,
++                         state, &clipRect, &clipRect);
+ }
+ 
+ /******************************************************************************
+@@ -151,12 +184,18 @@ QVistaHelper::QVistaHelper(QWizard *wiza
+     , backButton_(0)
+ {
+     QVistaHelper::m_devicePixelRatio = wizard->devicePixelRatio();
++    isVista = resolveSymbols();
+     if (instanceCount++ == 0)
+         cachedVistaState = Dirty;
+-    backButton_ = new QVistaBackButton(wizard);
+-    backButton_->hide();
++    if (isVista) {
++        backButton_ = new QVistaBackButton(wizard);
++        backButton_->hide();
++    }
+ 
++    // Handle diff between Windows 7 and Vista
+     iconSpacing = QStyleHelper::dpiScaled(7, wizard);
++    textSpacing = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows7?
++                  iconSpacing : QStyleHelper::dpiScaled(20, wizard);
+ }
+ 
+ QVistaHelper::~QVistaHelper()
+@@ -186,13 +225,20 @@ void QVistaHelper::updateCustomMargins(b
+ 
+ bool QVistaHelper::isCompositionEnabled()
+ {
+-    BOOL bEnabled;
+-    return SUCCEEDED(DwmIsCompositionEnabled(&bEnabled)) && bEnabled;
++    bool value = isVista;
++    if (isVista) {
++        HRESULT hr;
++        BOOL bEnabled;
++
++        hr = pDwmIsCompositionEnabled(&bEnabled);
++        value = (SUCCEEDED(hr) && bEnabled);
++    }
++    return value;
+ }
+ 
+ bool QVistaHelper::isThemeActive()
+ {
+-    return IsThemeActive();
++    return isVista && pIsThemeActive();
+ }
+ 
+ QVistaHelper::VistaState QVistaHelper::vistaState()
+@@ -212,9 +258,9 @@ void QVistaHelper::disconnectBackButton(
+ QColor QVistaHelper::basicWindowFrameColor()
+ {
+     DWORD rgb;
+-    const HANDLE hTheme = OpenThemeData(GetDesktopWindow(), L"WINDOW");
+-    GetThemeColor(hTheme, WP_CAPTION, CS_ACTIVE,
+-                  wizard->isActiveWindow() ? TMT_FILLCOLORHINT : TMT_BORDERCOLORHINT, &rgb);
++    const HANDLE hTheme = pOpenThemeData(GetDesktopWindow(), L"WINDOW");
++    pGetThemeColor(hTheme, WP_CAPTION, CS_ACTIVE,
++                   wizard->isActiveWindow() ? TMT_FILLCOLORHINT : TMT_BORDERCOLORHINT, &rgb);
+     BYTE r = GetRValue(rgb);
+     BYTE g = GetGValue(rgb);
+     BYTE b = GetBValue(rgb);
+@@ -231,7 +277,7 @@ bool QVistaHelper::setDWMTitleBar(TitleB
+         else
+             mar.cyTopHeight = (titleBarSize() + topOffset(wizard)) * QVistaHelper::m_devicePixelRatio;
+         if (const HWND wizardHandle = wizardHWND())
+-            if (SUCCEEDED(DwmExtendFrameIntoClientArea(wizardHandle, &mar)))
++            if (SUCCEEDED(pDwmExtendFrameIntoClientArea(wizardHandle, &mar)))
+                 value = true;
+     }
+     return value;
+@@ -243,7 +289,7 @@ static LOGFONT getCaptionLogFont(HANDLE 
+ {
+     LOGFONT result = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, { 0 } };
+ 
+-    if (!hTheme || FAILED(GetThemeSysFont(hTheme, TMT_CAPTIONFONT, &result))) {
++    if (!hTheme || FAILED(pGetThemeSysFont(hTheme, TMT_CAPTIONFONT, &result))) {
+         NONCLIENTMETRICS ncm;
+         ncm.cbSize = sizeof(NONCLIENTMETRICS);
+         SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS), &ncm, false);
+@@ -254,7 +300,9 @@ static LOGFONT getCaptionLogFont(HANDLE 
+ 
+ static bool getCaptionQFont(int dpi, QFont *result)
+ {
+-    const HANDLE hTheme = OpenThemeData(GetDesktopWindow(), L"WINDOW");
++    if (!pOpenThemeData)
++        return false;
++    const HANDLE hTheme = pOpenThemeData(GetDesktopWindow(), L"WINDOW");
+     if (!hTheme)
+         return false;
+     // Call into QWindowsNativeInterface to convert the LOGFONT into a QFont.
+@@ -329,14 +377,16 @@ void QVistaHelper::drawTitleBar(QPainter
+ 
+ void QVistaHelper::setTitleBarIconAndCaptionVisible(bool visible)
+ {
+-    WTA_OPTIONS opt;
+-    opt.dwFlags = WTNCA_NODRAWICON | WTNCA_NODRAWCAPTION;
+-    if (visible)
+-        opt.dwMask = 0;
+-    else
+-        opt.dwMask = WTNCA_NODRAWICON | WTNCA_NODRAWCAPTION;
+-    if (const HWND handle = wizardHWND())
+-        SetWindowThemeAttribute(handle, WTA_NONCLIENT, &opt, sizeof(WTA_OPTIONS));
++    if (isVista) {
++        WTA_OPTIONS opt;
++        opt.dwFlags = WTNCA_NODRAWICON | WTNCA_NODRAWCAPTION;
++        if (visible)
++            opt.dwMask = 0;
++        else
++            opt.dwMask = WTNCA_NODRAWICON | WTNCA_NODRAWCAPTION;
++        if (const HWND handle = wizardHWND())
++            pSetWindowThemeAttribute(handle, WTA_NONCLIENT, &opt, sizeof(WTA_OPTIONS));
++    }
+ }
+ 
+ #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+@@ -349,7 +399,7 @@ bool QVistaHelper::winEvent(MSG* msg, lo
+     case WM_NCHITTEST: {
+         LRESULT lResult;
+         // Perform hit testing using DWM
+-        if (DwmDefWindowProc(msg->hwnd, msg->message, msg->wParam, msg->lParam, &lResult)) {
++        if (pDwmDefWindowProc(msg->hwnd, msg->message, msg->wParam, msg->lParam, &lResult)) {
+             // DWM returned a hit, no further processing necessary
+             *result = lResult;
+         } else {
+@@ -368,7 +418,7 @@ bool QVistaHelper::winEvent(MSG* msg, lo
+     default:
+         LRESULT lResult;
+         // Pass to DWM to handle
+-        if (DwmDefWindowProc(msg->hwnd, msg->message, msg->wParam, msg->lParam, &lResult))
++        if (pDwmDefWindowProc(msg->hwnd, msg->message, msg->wParam, msg->lParam, &lResult))
+             *result = lResult;
+         // If the message wasn't handled by DWM, continue processing it as normal
+         else
+@@ -605,7 +655,7 @@ bool QVistaHelper::drawTitleText(QPainte
+     if (vistaState() == VistaAero) {
+         const QRect rectDp = QRect(rect.topLeft() * QVistaHelper::m_devicePixelRatio,
+                                    rect.size() * QVistaHelper::m_devicePixelRatio);
+-        const HANDLE hTheme = OpenThemeData(GetDesktopWindow(), L"WINDOW");
++        const HANDLE hTheme = pOpenThemeData(GetDesktopWindow(), L"WINDOW");
+         if (!hTheme) return false;
+         // Set up a memory DC and bitmap that we'll draw into
+         HDC dcMem;
+@@ -639,7 +689,7 @@ bool QVistaHelper::drawTitleText(QPainte
+         dto.dwFlags = DTT_COMPOSITED|DTT_GLOWSIZE;
+         dto.iGlowSize = glowSize(wizard);
+ 
+-        DrawThemeTextEx(hTheme, dcMem, 0, 0, reinterpret_cast<LPCWSTR>(text.utf16()), -1, uFormat, &rctext, &dto );
++        pDrawThemeTextEx(hTheme, dcMem, 0, 0, reinterpret_cast<LPCWSTR>(text.utf16()), -1, uFormat, &rctext, &dto );
+         BitBlt(hdc, rectDp.left(), rectDp.top(), rectDp.width(), rectDp.height(), dcMem, 0, 0, SRCCOPY);
+         SelectObject(dcMem, (HGDIOBJ) hOldBmp);
+         SelectObject(dcMem, (HGDIOBJ) hOldFont);
+@@ -714,7 +764,7 @@ int QVistaHelper::captionSizeDp()
+ 
+ int QVistaHelper::titleOffset()
+ {
+-    int iconOffset = wizard ->windowIcon().isNull() ? 0 : iconSize(wizard) + iconSpacing;
++    int iconOffset = wizard->windowIcon().isNull() ? 0 : iconSize(wizard) + textSpacing;
+     return leftMargin(wizard) + iconOffset;
+ }
+ 
+@@ -733,11 +783,55 @@ int QVistaHelper::topOffset(const QPaint
+     if (vistaState() != VistaAero)
+         return titleBarSize() + 3;
+     static const int aeroOffset =
+-        QOperatingSystemVersion::current() < QOperatingSystemVersion::Windows8 ?
++        QOperatingSystemVersion::compare(QOperatingSystemVersion::current(), QOperatingSystemVersion::Windows7) == 0 ?
+         QStyleHelper::dpiScaled(4, device) : QStyleHelper::dpiScaled(13, device);
+     return aeroOffset + titleBarSize();
+ }
+ 
++bool QVistaHelper::resolveSymbols()
++{
++    static bool tried = false;
++    if (!tried) {
++        tried = true;
++        QSystemLibrary dwmLib(L"dwmapi");
++        pDwmIsCompositionEnabled =
++            (PtrDwmIsCompositionEnabled)dwmLib.resolve("DwmIsCompositionEnabled");
++        if (pDwmIsCompositionEnabled) {
++            pDwmDefWindowProc = (PtrDwmDefWindowProc)dwmLib.resolve("DwmDefWindowProc");
++            pDwmExtendFrameIntoClientArea =
++                (PtrDwmExtendFrameIntoClientArea)dwmLib.resolve("DwmExtendFrameIntoClientArea");
++        }
++        QSystemLibrary themeLib(L"uxtheme");
++        pIsAppThemed = (PtrIsAppThemed)themeLib.resolve("IsAppThemed");
++        if (pIsAppThemed) {
++            pDrawThemeBackground = (PtrDrawThemeBackground)themeLib.resolve("DrawThemeBackground");
++            pGetThemePartSize = (PtrGetThemePartSize)themeLib.resolve("GetThemePartSize");
++            pGetThemeColor = (PtrGetThemeColor)themeLib.resolve("GetThemeColor");
++            pIsThemeActive = (PtrIsThemeActive)themeLib.resolve("IsThemeActive");
++            pOpenThemeData = (PtrOpenThemeData)themeLib.resolve("OpenThemeData");
++            pCloseThemeData = (PtrCloseThemeData)themeLib.resolve("CloseThemeData");
++            pGetThemeSysFont = (PtrGetThemeSysFont)themeLib.resolve("GetThemeSysFont");
++            pDrawThemeTextEx = (PtrDrawThemeTextEx)themeLib.resolve("DrawThemeTextEx");
++            pSetWindowThemeAttribute = (PtrSetWindowThemeAttribute)themeLib.resolve("SetWindowThemeAttribute");
++        }
++    }
++
++    return
++        pDwmIsCompositionEnabled != nullptr
++        && pDwmDefWindowProc != nullptr
++        && pDwmExtendFrameIntoClientArea != nullptr
++        && pIsAppThemed != nullptr
++        && pDrawThemeBackground != nullptr
++        && pGetThemePartSize != nullptr
++        && pGetThemeColor != 0
++        && pIsThemeActive != nullptr
++        && pOpenThemeData != nullptr
++        && pCloseThemeData != nullptr
++        && pGetThemeSysFont != nullptr
++        && pDrawThemeTextEx != nullptr
++        && pSetWindowThemeAttribute != nullptr;
++}
++
+ QT_END_NAMESPACE
+ 
+ #endif // style_windowsvista
+diff -aupr 5.15.9-orig/qtbase/src/widgets/dialogs/qwizard_win_p.h 5.15.9-x32/qtbase/src/widgets/dialogs/qwizard_win_p.h
+--- 5.15.9-orig/qtbase/src/widgets/dialogs/qwizard_win_p.h	1970-01-01 00:00:00 +0000
++++ 5.15.9-x32/qtbase/src/widgets/dialogs/qwizard_win_p.h	1970-01-01 00:00:00 +0000
+@@ -133,6 +133,7 @@ private:
+         { return backButton_->isVisible() ? backButtonSize(device) + iconSpacing : 0; }
+ 
+     int titleOffset();
++    bool resolveSymbols();
+     void drawTitleBar(QPainter *painter);
+     void setMouseCursor(QPoint pos);
+     void collapseTopFrameStrut();
+@@ -147,6 +148,7 @@ private:
+     bool eventFilter(QObject *obj, QEvent *event) override;
+ 
+     static int instanceCount;
++    static bool isVista;
+     static VistaState cachedVistaState;
+     static bool isCompositionEnabled();
+     static bool isThemeActive();
+@@ -160,6 +162,7 @@ private:
+ 
+     int titleBarOffset;  // Extra spacing above the text
+     int iconSpacing;    // Space between button and icon
++    int textSpacing;    // Space between icon and text
+     static int m_devicePixelRatio;
+ };
+ 
