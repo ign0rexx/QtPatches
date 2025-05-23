@@ -1,0 +1,450 @@
+diff -Naupr 5.15.16-orig/qtwinextras/src/winextras/qwinfunctions.cpp 5.15.16/qtwinextras/src/winextras/qwinfunctions.cpp
+--- 5.15.16-orig/qtwinextras/src/winextras/qwinfunctions.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtwinextras/src/winextras/qwinfunctions.cpp	1970-01-01 00:00:00 +0000
+@@ -1496,7 +1496,9 @@ QColor QtWin::colorizationColor(bool *op
+ 
+     DWORD colorization = 0;
+     BOOL dummy = false;
+-    DwmGetColorizationColor(&colorization, &dummy);
++    qtDwmApiDll.init();
++    if (qtDwmApiDll.dwmGetColorizationColor)
++        qtDwmApiDll.dwmGetColorizationColor(&colorization, &dummy);
+     if (opaqueBlend)
+         *opaqueBlend = dummy;
+     return QColor::fromRgba(colorization);
+@@ -1695,8 +1697,11 @@ QtWin::WindowFlip3DPolicy QtWin::windowF
+ void qt_ExtendFrameIntoClientArea(QWindow *window, int left, int top, int right, int bottom)
+ {
+     QWinEventFilter::setup();
+-    MARGINS margins = {left, right, top, bottom};
+-    DwmExtendFrameIntoClientArea(reinterpret_cast<HWND>(window->winId()), &margins);
++    qtDwmApiDll.init();
++    if (qtDwmApiDll.dwmExtendFrameIntoClientArea) {
++        MARGINS margins = {left, right, top, bottom};
++        qtDwmApiDll.dwmExtendFrameIntoClientArea(reinterpret_cast<HWND>(window->winId()), &margins);
++    }
+ }
+ 
+ /*! \fn void QtWin::extendFrameIntoClientArea(QWidget *window, int left, int top, int right, int bottom)
+@@ -1805,18 +1810,22 @@ void QtWin::enableBlurBehindWindow(QWind
+ {
+     Q_ASSERT_X(window, Q_FUNC_INFO, "window is null");
+ 
+-    DWM_BLURBEHIND dwmbb = {0, 0, nullptr, 0};
+-    dwmbb.dwFlags = DWM_BB_ENABLE;
++    qtDwmApiDll.init();
++    if (!qtDwmApiDll.dwmEnableBlurBehindWindow)
++        return;
++
++    qt_DWM_BLURBEHIND dwmbb = {0, 0, nullptr, 0};
++    dwmbb.dwFlags = qt_DWM_BB_ENABLE;
+     dwmbb.fEnable = TRUE;
+     HRGN rgn = nullptr;
+     if (!region.isNull()) {
+         rgn = toHRGN(region);
+         if (rgn) {
+             dwmbb.hRgnBlur = rgn;
+-            dwmbb.dwFlags |= DWM_BB_BLURREGION;
++            dwmbb.dwFlags |= qt_DWM_BB_BLURREGION;
+         }
+     }
+-    DwmEnableBlurBehindWindow(reinterpret_cast<HWND>(window->winId()), &dwmbb);
++    qtDwmApiDll.dwmEnableBlurBehindWindow(reinterpret_cast<HWND>(window->winId()), &dwmbb);
+     if (rgn)
+         DeleteObject(rgn);
+ }
+@@ -1863,9 +1872,12 @@ void QtWin::enableBlurBehindWindow(QWind
+ void QtWin::disableBlurBehindWindow(QWindow *window)
+ {
+     Q_ASSERT_X(window, Q_FUNC_INFO, "window is null");
+-    DWM_BLURBEHIND dwmbb = {0, 0, nullptr, 0};
+-    dwmbb.dwFlags = DWM_BB_ENABLE;
+-    DwmEnableBlurBehindWindow(reinterpret_cast<HWND>(window->winId()), &dwmbb);
++    qtDwmApiDll.init();
++    if (!qtDwmApiDll.dwmEnableBlurBehindWindow)
++        return;
++    qt_DWM_BLURBEHIND dwmbb = {0, 0, nullptr, 0};
++    dwmbb.dwFlags = qt_DWM_BB_ENABLE;
++    qtDwmApiDll.dwmEnableBlurBehindWindow(reinterpret_cast<HWND>(window->winId()), &dwmbb);
+ }
+ 
+ /*!
+@@ -1880,7 +1892,9 @@ bool QtWin::isCompositionEnabled()
+     QWinEventFilter::setup();
+ 
+     BOOL enabled = FALSE;
+-    DwmIsCompositionEnabled(&enabled);
++    qtDwmApiDll.init();
++    if (qtDwmApiDll.dwmIsCompositionEnabled)
++        qtDwmApiDll.dwmIsCompositionEnabled(&enabled);
+     return enabled;
+ }
+ 
+@@ -1901,8 +1915,10 @@ void QtWin::setCompositionEnabled(bool e
+ {
+     QWinEventFilter::setup();
+ 
+-    UINT compositionEnabled = enabled;
+-    DwmEnableComposition(compositionEnabled);
++    qtDwmApiDll.init();
++    if (qtDwmApiDll.dwmEnableComposition)
++        qtDwmApiDll.dwmEnableComposition((UINT) enabled);
++
+ }
+ QT_WARNING_POP
+ 
+@@ -1933,8 +1949,11 @@ bool QtWin::isCompositionOpaque()
+  */
+ void QtWin::setCurrentProcessExplicitAppUserModelID(const QString &id)
+ {
+-    QScopedArrayPointer<wchar_t> wid(qt_qstringToNullTerminated(id));
+-    SetCurrentProcessExplicitAppUserModelID(wid.data());
++    qtShell32Dll.init();
++    if (qtShell32Dll.setCurrentProcessExplicitAppUserModelID) {
++        QScopedArrayPointer<WCHAR> wid(qt_qstringToNullTerminated(id));
++        qtShell32Dll.setCurrentProcessExplicitAppUserModelID(wid.data());
++    }
+ }
+ 
+ /*!
+diff -Naupr 5.15.16-orig/qtwinextras/src/winextras/qwinfunctions_p.cpp 5.15.16/qtwinextras/src/winextras/qwinfunctions_p.cpp
+--- 5.15.16-orig/qtwinextras/src/winextras/qwinfunctions_p.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtwinextras/src/winextras/qwinfunctions_p.cpp	1970-01-01 00:00:00 +0000
+@@ -0,0 +1,78 @@
++/****************************************************************************
++ **
++ ** Copyright (C) 2016 Ivan Vizir <define-true-false@yandex.com>
++ ** Contact: https://www.qt.io/licensing/
++ **
++ ** This file is part of the QtWinExtras module of the Qt Toolkit.
++ **
++ ** $QT_BEGIN_LICENSE:LGPL$
++ ** Commercial License Usage
++ ** Licensees holding valid commercial Qt licenses may use this file in
++ ** accordance with the commercial license agreement provided with the
++ ** Software or, alternatively, in accordance with the terms contained in
++ ** a written agreement between you and The Qt Company. For licensing terms
++ ** and conditions see https://www.qt.io/terms-conditions. For further
++ ** information use the contact form at https://www.qt.io/contact-us.
++ **
++ ** GNU Lesser General Public License Usage
++ ** Alternatively, this file may be used under the terms of the GNU Lesser
++ ** General Public License version 3 as published by the Free Software
++ ** Foundation and appearing in the file LICENSE.LGPL3 included in the
++ ** packaging of this file. Please review the following information to
++ ** ensure the GNU Lesser General Public License version 3 requirements
++ ** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
++ **
++ ** GNU General Public License Usage
++ ** Alternatively, this file may be used under the terms of the GNU
++ ** General Public License version 2.0 or (at your option) the GNU General
++ ** Public license version 3 or any later version approved by the KDE Free
++ ** Qt Foundation. The licenses are as published by the Free Software
++ ** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
++ ** included in the packaging of this file. Please review the following
++ ** information to ensure the GNU General Public License requirements will
++ ** be met: https://www.gnu.org/licenses/gpl-2.0.html and
++ ** https://www.gnu.org/licenses/gpl-3.0.html.
++ **
++ ** $QT_END_LICENSE$
++ **
++ ****************************************************************************/
++
++#include "qwinfunctions_p.h"
++
++#include <qt_windows.h>
++
++QT_BEGIN_NAMESPACE
++
++QtDwmApiDll qtDwmApiDll;
++QtShell32Dll qtShell32Dll;
++
++void QtDwmApiDll::resolve()
++{
++    if (HMODULE dwmapi = LoadLibraryW(L"dwmapi.dll"))
++    {
++        dwmExtendFrameIntoClientArea = (DwmExtendFrameIntoClientArea) GetProcAddress(dwmapi, "DwmExtendFrameIntoClientArea");
++        dwmEnableBlurBehindWindow = (DwmEnableBlurBehindWindow) GetProcAddress(dwmapi, "DwmEnableBlurBehindWindow");
++        dwmGetColorizationColor = (DwmGetColorizationColor) GetProcAddress(dwmapi, "DwmGetColorizationColor");
++        dwmSetWindowAttribute = (DwmSetWindowAttribute) GetProcAddress(dwmapi, "DwmSetWindowAttribute");
++        dwmGetWindowAttribute = (DwmGetWindowAttribute) GetProcAddress(dwmapi, "DwmGetWindowAttribute");
++        dwmIsCompositionEnabled = (DwmIsCompositionEnabled) GetProcAddress(dwmapi, "DwmIsCompositionEnabled");
++        dwmEnableComposition = (DwmEnableComposition) GetProcAddress(dwmapi, "DwmEnableComposition");
++        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows7)
++        {
++            dwmSetIconicThumbnail = (DwmSetIconicThumbnail) GetProcAddress(dwmapi, "DwmSetIconicThumbnail");
++            dwmSetIconicLivePreviewBitmap = (DwmSetIconicLivePreviewBitmap) GetProcAddress(dwmapi, "DwmSetIconicLivePreviewBitmap");
++            dwmInvalidateIconicBitmaps = (DwmInvalidateIconicBitmaps) GetProcAddress(dwmapi, "DwmInvalidateIconicBitmaps");
++        }
++    }
++}
++
++void QtShell32Dll::resolve()
++{
++    if (HMODULE shell32 = LoadLibraryW(L"shell32.dll"))
++    {
++        sHCreateItemFromParsingName = (SHCreateItemFromParsingName) GetProcAddress(shell32, "SHCreateItemFromParsingName");
++        setCurrentProcessExplicitAppUserModelID = (SetCurrentProcessExplicitAppUserModelID) GetProcAddress(shell32, "SetCurrentProcessExplicitAppUserModelID");
++    }
++}
++
++QT_END_NAMESPACE
+diff -Naupr 5.15.16-orig/qtwinextras/src/winextras/qwinfunctions_p.h 5.15.16/qtwinextras/src/winextras/qwinfunctions_p.h
+--- 5.15.16-orig/qtwinextras/src/winextras/qwinfunctions_p.h	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtwinextras/src/winextras/qwinfunctions_p.h	1970-01-01 00:00:00 +0000
+@@ -53,29 +53,138 @@
+ 
+ #include <QtCore/qstring.h>
+ #include <QtCore/qt_windows.h>
++#include <QtCore/qoperatingsystemversion.h>
+ #include <uxtheme.h>
+ #include <dwmapi.h>
+ 
+ QT_BEGIN_NAMESPACE
+ 
+-enum qt_DWMWINDOWATTRIBUTE // Not present in MinGW 4.9
++enum qt_DWMWINDOWATTRIBUTE
+ {
+-    qt_DWMWA_DISALLOW_PEEK = 11,
+-    qt_DWMWA_EXCLUDED_FROM_PEEK = 12,
++    qt_DWMWA_NCRENDERING_ENABLED = 1,
++    qt_DWMWA_NCRENDERING_POLICY,
++    qt_DWMWA_TRANSITIONS_FORCEDISABLED,
++    qt_DWMWA_ALLOW_NCPAINT,
++    qt_DWMWA_CAPTION_BUTTON_BOUNDS,
++    qt_DWMWA_NONCLIENT_RTL_LAYOUT,
++    qt_DWMWA_FORCE_ICONIC_REPRESENTATION,
++    qt_DWMWA_FLIP3D_POLICY,
++    qt_DWMWA_EXTENDED_FRAME_BOUNDS,
++    qt_DWMWA_HAS_ICONIC_BITMAP,
++    qt_DWMWA_DISALLOW_PEEK,
++    qt_DWMWA_EXCLUDED_FROM_PEEK,
++    qt_DWMWA_CLOAK,
++    qt_DWMWA_CLOAKED,
++    qt_DWMWA_FREEZE_REPRESENTATION,
++    qt_DWMWA_LAST
+ };
+ 
+-namespace QtDwmApiDll
++enum qt_DWMFLIP3DWINDOWPOLICY
+ {
+-    template <class T> static T windowAttribute(HWND hwnd, DWORD attribute, T defaultValue);
+-    template <class T> static void setWindowAttribute(HWND hwnd, DWORD attribute, T value);
++    qt_DWMFLIP3D_DEFAULT,
++    qt_DWMFLIP3D_EXCLUDEBELOW,
++    qt_DWMFLIP3D_EXCLUDEABOVE,
++    qt_DWMFLIP3D_LAST
++};
++
++#include <pshpack1.h>
++
++struct qt_DWM_BLURBEHIND
++{
++    DWORD dwFlags;
++    BOOL  fEnable;
++    HRGN  hRgnBlur;
++    BOOL  fTransitionOnMaximized;
++};
++
++#include <poppack.h>
++
++const int qt_DWM_BB_ENABLE                = 0x00000001;
++const int qt_DWM_BB_BLURREGION            = 0x00000002;
++const int qt_DWM_BB_TRANSITIONONMAXIMIZED = 0x00000004;
++
++struct QtDwmApiDll
++{
++    typedef HRESULT (STDAPICALLTYPE *DwmGetColorizationColor)(DWORD *, BOOL *);
++    typedef HRESULT (STDAPICALLTYPE *DwmSetWindowAttribute)(HWND, DWORD, LPCVOID, DWORD);
++    typedef HRESULT (STDAPICALLTYPE *DwmGetWindowAttribute)(HWND, DWORD, PVOID, DWORD);
++    typedef HRESULT (STDAPICALLTYPE *DwmExtendFrameIntoClientArea)(HWND, const MARGINS *);
++    typedef HRESULT (STDAPICALLTYPE *DwmEnableBlurBehindWindow)(HWND, const qt_DWM_BLURBEHIND *);
++    typedef HRESULT (STDAPICALLTYPE *DwmIsCompositionEnabled)(BOOL *);
++    typedef HRESULT (STDAPICALLTYPE *DwmEnableComposition)(UINT);
++    typedef HRESULT (STDAPICALLTYPE *DwmSetIconicThumbnail)(HWND, HBITMAP, DWORD);
++    typedef HRESULT (STDAPICALLTYPE *DwmSetIconicLivePreviewBitmap)(HWND, HBITMAP, POINT *, DWORD);
++    typedef HRESULT (STDAPICALLTYPE *DwmInvalidateIconicBitmaps)(HWND);
++
++    QtDwmApiDll()
++        : dwmGetColorizationColor(0), dwmSetWindowAttribute(0), dwmGetWindowAttribute(0)
++        , dwmExtendFrameIntoClientArea(0), dwmEnableBlurBehindWindow(0)
++        , dwmIsCompositionEnabled(0), dwmEnableComposition(0)
++        , dwmSetIconicThumbnail(0), dwmSetIconicLivePreviewBitmap(0), dwmInvalidateIconicBitmaps(0)
++        , resolved(false)
++    {}
++
++    void init()
++    {
++        if (!resolved && QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista)
++        {
++            resolve();
++            resolved = true;
++        }
++    }
++
++    template<class T> static T windowAttribute(HWND hwnd, DWORD attribute, T defaultValue);
++    template<class T> static void setWindowAttribute(HWND hwnd, DWORD attribute, T value);
+ 
+-    inline bool booleanWindowAttribute(HWND hwnd, DWORD attribute)
++    static bool booleanWindowAttribute(HWND hwnd, DWORD attribute)
+         { return QtDwmApiDll::windowAttribute<BOOL>(hwnd, attribute, FALSE) != FALSE; }
+ 
+-    inline void setBooleanWindowAttribute(HWND hwnd, DWORD attribute, bool value)
++    static void setBooleanWindowAttribute(HWND hwnd, DWORD attribute, bool value)
+         { setWindowAttribute<BOOL>(hwnd, attribute, BOOL(value ? TRUE : FALSE)); }
++
++    DwmGetColorizationColor dwmGetColorizationColor;
++    DwmSetWindowAttribute dwmSetWindowAttribute;
++    DwmGetWindowAttribute dwmGetWindowAttribute;
++    DwmExtendFrameIntoClientArea dwmExtendFrameIntoClientArea;
++    DwmEnableBlurBehindWindow dwmEnableBlurBehindWindow;
++    DwmIsCompositionEnabled dwmIsCompositionEnabled;
++    DwmEnableComposition dwmEnableComposition;
++    DwmSetIconicThumbnail dwmSetIconicThumbnail;
++    DwmSetIconicLivePreviewBitmap dwmSetIconicLivePreviewBitmap;
++    DwmInvalidateIconicBitmaps dwmInvalidateIconicBitmaps;
++
++private:
++    bool resolved;
++    void resolve();
+ };
+ 
++struct QtShell32Dll
++{
++    typedef HRESULT (STDAPICALLTYPE *SHCreateItemFromParsingName)(PCWSTR, IBindCtx *, REFIID, void **);
++    typedef HRESULT (STDAPICALLTYPE *SetCurrentProcessExplicitAppUserModelID)(PCWSTR);
++
++    QtShell32Dll() : sHCreateItemFromParsingName(0), setCurrentProcessExplicitAppUserModelID(0), resolved(false) {}
++
++    void init()
++    {
++        if (!resolved && QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista)
++        {
++            resolve();
++            resolved = true;
++        }
++    }
++
++    SHCreateItemFromParsingName sHCreateItemFromParsingName; // Vista
++    SetCurrentProcessExplicitAppUserModelID setCurrentProcessExplicitAppUserModelID; // Windows 7
++
++private:
++    bool resolved;
++    void resolve();
++};
++
++extern QtDwmApiDll qtDwmApiDll;
++extern QtShell32Dll qtShell32Dll;
++
+ inline void qt_qstringToNullTerminated(const QString &src, wchar_t *dst)
+ {
+     dst[src.toWCharArray(dst)] = 0;
+@@ -88,19 +197,22 @@ inline wchar_t *qt_qstringToNullTerminat
+     return buffer;
+ }
+ 
+-template <class T>
++template<class T>
+ T QtDwmApiDll::windowAttribute(HWND hwnd, DWORD attribute, T defaultValue)
+ {
+-    T value;
+-    if (FAILED(DwmGetWindowAttribute(hwnd, attribute, &value, sizeof(value))))
+-        value = defaultValue;
++    qtDwmApiDll.init();
++    T value = defaultValue;
++    if (qtDwmApiDll.dwmGetWindowAttribute)
++        qtDwmApiDll.dwmGetWindowAttribute(hwnd, attribute, &value, sizeof(value));
+     return value;
+ }
+ 
+-template <class T>
++template<class T>
+ void QtDwmApiDll::setWindowAttribute(HWND hwnd, DWORD attribute, T value)
+ {
+-    DwmSetWindowAttribute(hwnd, attribute, &value, sizeof(value));
++    qtDwmApiDll.init();
++    if (qtDwmApiDll.dwmSetWindowAttribute)
++        qtDwmApiDll.dwmSetWindowAttribute(hwnd, attribute, &value, sizeof(value));
+ }
+ 
+ QT_END_NAMESPACE
+diff -Naupr 5.15.16-orig/qtwinextras/src/winextras/qwinjumplist.cpp 5.15.16/qtwinextras/src/winextras/qwinjumplist.cpp
+--- 5.15.16-orig/qtwinextras/src/winextras/qwinjumplist.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtwinextras/src/winextras/qwinjumplist.cpp	1970-01-01 00:00:00 +0000
+@@ -398,8 +398,12 @@ IShellLinkW *QWinJumpListPrivate::toIShe
+ IShellItem2 *QWinJumpListPrivate::toIShellItem(const QWinJumpListItem *item)
+ {
+     IShellItem2 *shellitem = nullptr;
+-    QScopedArrayPointer<wchar_t> buffer(qt_qstringToNullTerminated(item->filePath()));
+-    SHCreateItemFromParsingName(buffer.data(), nullptr, qIID_IShellItem2, reinterpret_cast<void **>(&shellitem));
++    qtShell32Dll.init();
++    if (qtShell32Dll.sHCreateItemFromParsingName)
++    {
++        QScopedArrayPointer<WCHAR> buffer(qt_qstringToNullTerminated(item->filePath()));
++        qtShell32Dll.sHCreateItemFromParsingName(buffer.data(), 0, qIID_IShellItem2, reinterpret_cast<void **>(&shellitem));
++    }
+     return shellitem;
+ }
+ 
+diff -Naupr 5.15.16-orig/qtwinextras/src/winextras/qwinthumbnailtoolbar.cpp 5.15.16/qtwinextras/src/winextras/qwinthumbnailtoolbar.cpp
+--- 5.15.16-orig/qtwinextras/src/winextras/qwinthumbnailtoolbar.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtwinextras/src/winextras/qwinthumbnailtoolbar.cpp	1970-01-01 00:00:00 +0000
+@@ -238,10 +238,13 @@ void QWinThumbnailToolBarPrivate::update
+          qWarning() << Q_FUNC_INFO << "invoked with hwnd=0";
+          return;
+     }
++    qtDwmApiDll.init();
++    if (!qtDwmApiDll.dwmInvalidateIconicBitmaps)
++        return;
+     const bool enabled = iconicThumbnail || iconicLivePreview;
+     q->setIconicPixmapNotificationsEnabled(enabled);
+     if (enabled && invalidate) {
+-        const HRESULT hr = DwmInvalidateIconicBitmaps(hwnd);
++        const HRESULT hr = qtDwmApiDll.dwmInvalidateIconicBitmaps(hwnd);
+         if (FAILED(hr))
+             qWarning() << QWinThumbnailToolBarPrivate::msgComFailed("DwmInvalidateIconicBitmaps", hr);
+     }
+@@ -387,11 +390,12 @@ QPixmap QWinThumbnailToolBar::iconicLive
+ 
+ inline void QWinThumbnailToolBarPrivate::updateIconicThumbnail(const MSG *message)
+ {
+-    if (!iconicThumbnail)
++    qtDwmApiDll.init();
++    if (!qtDwmApiDll.dwmSetIconicThumbnail || !iconicThumbnail)
+         return;
+     const QSize maxSize(HIWORD(message->lParam), LOWORD(message->lParam));
+     if (const HBITMAP bitmap = iconicThumbnail.bitmap(maxSize)) {
+-        const HRESULT hr = DwmSetIconicThumbnail(message->hwnd, bitmap, dWM_SIT_DISPLAYFRAME);
++        const HRESULT hr = qtDwmApiDll.dwmSetIconicThumbnail(message->hwnd, bitmap, dWM_SIT_DISPLAYFRAME);
+         if (FAILED(hr))
+             qWarning() << QWinThumbnailToolBarPrivate::msgComFailed("DwmSetIconicThumbnail", hr);
+     }
+@@ -399,14 +403,15 @@ inline void QWinThumbnailToolBarPrivate:
+ 
+ inline void QWinThumbnailToolBarPrivate::updateIconicLivePreview(const MSG *message)
+ {
+-    if (!iconicLivePreview)
++    qtDwmApiDll.init();
++    if (!qtDwmApiDll.dwmSetIconicLivePreviewBitmap || !iconicLivePreview)
+         return;
+     RECT rect;
+     GetClientRect(message->hwnd, &rect);
+     const QSize maxSize(rect.right, rect.bottom);
+     POINT offset = {0, 0};
+     if (const HBITMAP bitmap = iconicLivePreview.bitmap(maxSize)) {
+-        const HRESULT hr = DwmSetIconicLivePreviewBitmap(message->hwnd, bitmap, &offset, dWM_SIT_DISPLAYFRAME);
++        const HRESULT hr = qtDwmApiDll.dwmSetIconicLivePreviewBitmap(message->hwnd, bitmap, &offset, dWM_SIT_DISPLAYFRAME);
+         if (FAILED(hr))
+             qWarning() << QWinThumbnailToolBarPrivate::msgComFailed("DwmSetIconicLivePreviewBitmap", hr);
+     }
+diff -Naupr 5.15.16-orig/qtwinextras/src/winextras/winextras.pro 5.15.16/qtwinextras/src/winextras/winextras.pro
+--- 5.15.16-orig/qtwinextras/src/winextras/winextras.pro	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtwinextras/src/winextras/winextras.pro	1970-01-01 00:00:00 +0000
+@@ -4,6 +4,7 @@ QT += gui-private core-private
+ 
+ SOURCES += \
+     qwinfunctions.cpp \
++    qwinfunctions_p.cpp \
+     qwintaskbarbutton.cpp \
+     qwintaskbarprogress.cpp \
+     windowsguidsdefs.cpp \
