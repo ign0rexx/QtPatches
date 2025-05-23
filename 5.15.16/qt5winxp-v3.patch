@@ -672,6 +672,354 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/text/qstring.cpp 5.15.16/qtbase/src/c
  
      switch (res) {
      case CSTR_LESS_THAN:
+diff -aupr 5.15.16-orig/qtbase/src/gui/rhi/qrhid3d11.cpp 5.15.16/qtbase/src/gui/rhi/qrhid3d11.cpp
+--- 5.15.16-orig/qtbase/src/gui/rhi/qrhid3d11.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtbase/src/gui/rhi/qrhid3d11.cpp	1970-01-01 00:00:00 +0000
+@@ -167,18 +167,22 @@ inline Int aligned(Int v, Int byteAlign)
+ static IDXGIFactory1 *createDXGIFactory2()
+ {
+     IDXGIFactory1 *result = nullptr;
+-    if (QOperatingSystemVersion::current() > QOperatingSystemVersion::Windows7) {
+-        using PtrCreateDXGIFactory2 = HRESULT (WINAPI *)(UINT, REFIID, void **);
++    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows8_1)
++    {
++        typedef HRESULT (WINAPI *fnCreateDXGIFactory2)(UINT, REFIID, void **);
+         QSystemLibrary dxgilib(QStringLiteral("dxgi"));
+-        if (auto createDXGIFactory2 = reinterpret_cast<PtrCreateDXGIFactory2>(dxgilib.resolve("CreateDXGIFactory2"))) {
+-            const HRESULT hr = createDXGIFactory2(0, __uuidof(IDXGIFactory2), reinterpret_cast<void **>(&result));
+-            if (FAILED(hr)) {
++        auto pCreateDXGIFactory2 = reinterpret_cast<fnCreateDXGIFactory2>(dxgilib.resolve("CreateDXGIFactory2"));
++        if (pCreateDXGIFactory2)
++        {
++            HRESULT hr = pCreateDXGIFactory2(0, __uuidof(IDXGIFactory2), reinterpret_cast<void **>(&result));
++            if (FAILED(hr))
++            {
+                 qWarning("CreateDXGIFactory2() failed to create DXGI factory: %s", qPrintable(comErrorMessage(hr)));
+                 result = nullptr;
+             }
+-        } else {
+-            qWarning("Unable to resolve CreateDXGIFactory2()");
+         }
++        else
++            qWarning("CreateDXGIFactory2 is not supported by dxgi");
+     }
+     return result;
+ }
+@@ -186,10 +190,22 @@ static IDXGIFactory1 *createDXGIFactory2
+ static IDXGIFactory1 *createDXGIFactory1()
+ {
+     IDXGIFactory1 *result = nullptr;
+-    const HRESULT hr = CreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void **>(&result));
+-    if (FAILED(hr)) {
+-        qWarning("CreateDXGIFactory1() failed to create DXGI factory: %s", qPrintable(comErrorMessage(hr)));
+-        result = nullptr;
++    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista)
++    {
++        typedef HRESULT (WINAPI *fnCreateDXGIFactory1)(REFIID, void **);
++        QSystemLibrary dxgilib(QStringLiteral("dxgi"));
++        auto pCreateDXGIFactory1 = reinterpret_cast<fnCreateDXGIFactory1>(dxgilib.resolve("CreateDXGIFactory1"));
++        if (pCreateDXGIFactory1)
++        {
++            HRESULT hr = pCreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void **>(&result));
++            if (FAILED(hr))
++            {
++                qWarning("CreateDXGIFactory1() failed to create DXGI factory: %s", qPrintable(comErrorMessage(hr)));
++                result = nullptr;
++            }
++        }
++        else
++            qWarning("CreateDXGIFactory1 is not supported by dxgi");
+     }
+     return result;
+ }
+@@ -261,13 +277,27 @@ bool QRhiD3D11::create(QRhi::Flags flags
+         }
+ 
+         ID3D11DeviceContext *ctx = nullptr;
+-        HRESULT hr = D3D11CreateDevice(adapterToUse, D3D_DRIVER_TYPE_UNKNOWN, nullptr, devFlags,
+-                                       nullptr, 0, D3D11_SDK_VERSION,
+-                                       &dev, &featureLevel, &ctx);
+-        adapterToUse->Release();
+-        if (FAILED(hr)) {
+-            qWarning("Failed to create D3D11 device and context: %s", qPrintable(comErrorMessage(hr)));
+-            return false;
++        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows7)
++        {
++            typedef HRESULT (WINAPI *fnD3D11CreateDevice)(IDXGIAdapter *, D3D_DRIVER_TYPE, HMODULE, UINT, const D3D_FEATURE_LEVEL *, UINT, UINT, ID3D11Device **, D3D_FEATURE_LEVEL *, ID3D11DeviceContext **);
++            QSystemLibrary d3d11lib(QStringLiteral("d3d11"));
++            auto pD3D11CreateDevice = reinterpret_cast<fnD3D11CreateDevice>(d3d11lib.resolve("D3D11CreateDevice"));
++            if (pD3D11CreateDevice)
++            {
++                HRESULT hr = pD3D11CreateDevice(adapterToUse, D3D_DRIVER_TYPE_UNKNOWN, nullptr, devFlags,
++                    nullptr, 0, D3D11_SDK_VERSION, &dev, &featureLevel, &ctx);
++                adapterToUse->Release();
++                if (FAILED(hr))
++                {
++                    qWarning("Failed to create D3D11 device and context: %s", qPrintable(comErrorMessage(hr)));
++                    return false;
++                }
++            }
++            else
++            {
++                qWarning("ID3D11DeviceContext1 not supported");
++                return false;
++            }
+         }
+         if (SUCCEEDED(ctx->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void **>(&context)))) {
+             ctx->Release();
+diff -aupr 5.15.16-orig/qtbase/src/network/kernel/qnetconmonitor_win.cpp 5.15.16/qtbase/src/network/kernel/qnetconmonitor_win.cpp
+--- 5.15.16-orig/qtbase/src/network/kernel/qnetconmonitor_win.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtbase/src/network/kernel/qnetconmonitor_win.cpp	1970-01-01 00:00:00 +0000
+@@ -61,6 +61,27 @@ QT_BEGIN_NAMESPACE
+ 
+ Q_LOGGING_CATEGORY(lcNetMon, "qt.network.monitor");
+ 
++typedef NETIO_STATUS (WINAPI *PtrConvertInterfaceIndexToLuid)(NET_IFINDEX, PNET_LUID);
++typedef NETIO_STATUS (WINAPI *PtrConvertInterfaceLuidToGuid)(const NET_LUID *, GUID *);
++static PtrConvertInterfaceIndexToLuid pConvertInterfaceIndexToLuid = 0;
++static PtrConvertInterfaceLuidToGuid pConvertInterfaceLuidToGuid = 0;
++
++static void resolveLibs()
++{
++    // try to find the functions we need from Iphlpapi.dll
++    static bool done = false;
++    if (!done)
++    {
++        HINSTANCE hMod = GetModuleHandle(L"iphlpapi");
++        if (hMod)
++        {
++            pConvertInterfaceIndexToLuid = (PtrConvertInterfaceIndexToLuid) GetProcAddress(hMod, "ConvertInterfaceIndexToLuid");
++            pConvertInterfaceLuidToGuid = (PtrConvertInterfaceLuidToGuid) GetProcAddress(hMod, "ConvertInterfaceLuidToGuid");
++        }
++        done = true;
++    }
++}
++
+ namespace {
+ QString errorStringFromHResult(HRESULT hr)
+ {
+@@ -274,13 +295,17 @@ bool QNetworkConnectionEvents::setTarget
+     // Unset this in case it's already set to something
+     currentConnectionId = QUuid{};
+ 
++    resolveLibs();
++    if (!pConvertInterfaceIndexToLuid || !pConvertInterfaceLuidToGuid)
++        return false;
++
+     NET_LUID luid;
+-    if (ConvertInterfaceIndexToLuid(iface.index(), &luid) != NO_ERROR) {
++    if (pConvertInterfaceIndexToLuid(iface.index(), &luid) != NO_ERROR) {
+         qCWarning(lcNetMon, "Could not get the LUID for the interface.");
+         return false;
+     }
+     GUID guid;
+-    if (ConvertInterfaceLuidToGuid(&luid, &guid) != NO_ERROR) {
++    if (pConvertInterfaceLuidToGuid(&luid, &guid) != NO_ERROR) {
+         qCWarning(lcNetMon, "Could not get the GUID for the interface.");
+         return false;
+     }
+diff -aupr 5.15.16-orig/qtbase/src/network/kernel/qnetworkinterface_win.cpp 5.15.16/qtbase/src/network/kernel/qnetworkinterface_win.cpp
+--- 5.15.16-orig/qtbase/src/network/kernel/qnetworkinterface_win.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtbase/src/network/kernel/qnetworkinterface_win.cpp	1970-01-01 00:00:00 +0000
+@@ -48,6 +48,7 @@
+ #include <qhostinfo.h>
+ #include <qhash.h>
+ #include <qurl.h>
++#include <qoperatingsystemversion.h>
+ 
+ // Since we need to include winsock2.h, we need to define WIN32_LEAN_AND_MEAN
+ // (above) so windows.h won't include winsock.h.
+@@ -68,6 +69,33 @@
+ 
+ QT_BEGIN_NAMESPACE
+ 
++typedef NETIO_STATUS (WINAPI *PtrConvertInterfaceIndexToLuid)(NET_IFINDEX, PNET_LUID);
++typedef NETIO_STATUS (WINAPI *PtrConvertInterfaceLuidToName)(const NET_LUID *, PWSTR, SIZE_T);
++typedef NETIO_STATUS (WINAPI *PtrConvertInterfaceLuidToIndex)(const NET_LUID *, PNET_IFINDEX);
++typedef NETIO_STATUS (WINAPI *PtrConvertInterfaceNameToLuid)(const WCHAR *, PNET_LUID);
++static PtrConvertInterfaceIndexToLuid pConvertInterfaceIndexToLuid = 0;
++static PtrConvertInterfaceLuidToName pConvertInterfaceLuidToName = 0;
++static PtrConvertInterfaceLuidToIndex pConvertInterfaceLuidToIndex = 0;
++static PtrConvertInterfaceNameToLuid pConvertInterfaceNameToLuid = 0;
++
++static void resolveLibs()
++{
++    // try to find the functions we need from Iphlpapi.dll
++    static bool done = false;
++    if (!done)
++    {
++        HINSTANCE hMod = GetModuleHandle(L"iphlpapi");
++        if (hMod)
++        {
++            pConvertInterfaceIndexToLuid = (PtrConvertInterfaceIndexToLuid) GetProcAddress(hMod, "ConvertInterfaceIndexToLuid");
++            pConvertInterfaceLuidToName = (PtrConvertInterfaceLuidToName) GetProcAddress(hMod, "ConvertInterfaceLuidToNameW");
++            pConvertInterfaceLuidToIndex = (PtrConvertInterfaceLuidToIndex) GetProcAddress(hMod, "ConvertInterfaceLuidToIndex");
++            pConvertInterfaceNameToLuid = (PtrConvertInterfaceNameToLuid) GetProcAddress(hMod, "ConvertInterfaceNameToLuidW");
++        }
++        done = true;
++    }
++}
++
+ static QHostAddress addressFromSockaddr(sockaddr *sa)
+ {
+     QHostAddress address;
+@@ -85,30 +113,74 @@ static QHostAddress addressFromSockaddr(
+         qWarning("Got unknown socket family %d", sa->sa_family);
+     }
+     return address;
+-
+ }
+ 
+ uint QNetworkInterfaceManager::interfaceIndexFromName(const QString &name)
+ {
++    resolveLibs();
++    if (!pConvertInterfaceNameToLuid || !pConvertInterfaceLuidToIndex)
++        return 0;
++
+     NET_IFINDEX id;
+     NET_LUID luid;
+-    if (ConvertInterfaceNameToLuidW(reinterpret_cast<const wchar_t *>(name.constData()), &luid) == NO_ERROR
+-            && ConvertInterfaceLuidToIndex(&luid, &id) == NO_ERROR)
++    if (pConvertInterfaceNameToLuid(reinterpret_cast<const WCHAR *>(name.constData()), &luid) == NO_ERROR
++            && pConvertInterfaceLuidToIndex(&luid, &id) == NO_ERROR)
+         return uint(id);
+     return 0;
+ }
+ 
+ QString QNetworkInterfaceManager::interfaceNameFromIndex(uint index)
+ {
++    resolveLibs();
+     NET_LUID luid;
+-    if (ConvertInterfaceIndexToLuid(index, &luid) == NO_ERROR) {
++    if (pConvertInterfaceIndexToLuid && pConvertInterfaceLuidToName &&
++        pConvertInterfaceIndexToLuid(index, &luid) == NO_ERROR)
++    {
+         WCHAR buf[IF_MAX_STRING_SIZE + 1];
+-        if (ConvertInterfaceLuidToNameW(&luid, buf, sizeof(buf)/sizeof(buf[0])) == NO_ERROR)
++        if (pConvertInterfaceLuidToName(&luid, buf, sizeof(buf)/sizeof(buf[0])) == NO_ERROR)
+             return QString::fromWCharArray(buf);
+     }
+     return QString::number(index);
+ }
+ 
++static void getIpv4NetMasks(QHash<QHostAddress, QHostAddress> &ipv4netmasks)
++{
++    //Retrieve all the IPV4 addresses & netmasks
++    IP_ADAPTER_INFO staticBuf[2]; // 2 is arbitrary
++    PIP_ADAPTER_INFO pAdapter = staticBuf;
++    ULONG bufSize = sizeof staticBuf;
++
++    DWORD retval = GetAdaptersInfo(pAdapter, &bufSize);
++    if (retval == ERROR_BUFFER_OVERFLOW)
++    {
++        // need more memory
++        pAdapter = (IP_ADAPTER_INFO *)malloc(bufSize);
++        if (!pAdapter)
++            return;
++        // try again
++        if (GetAdaptersInfo(pAdapter, &bufSize) != ERROR_SUCCESS)
++        {
++            free(pAdapter);
++            return;
++        }
++    }
++    else if (retval != ERROR_SUCCESS)
++        return; // error
++
++    // iterate over the list and add the entries to our listing
++    for (PIP_ADAPTER_INFO ptr = pAdapter; ptr; ptr = ptr->Next)
++    {
++        for (PIP_ADDR_STRING addr = &ptr->IpAddressList; addr; addr = addr->Next)
++        {
++            QHostAddress address(QLatin1String(addr->IpAddress.String));
++            QHostAddress mask(QLatin1String(addr->IpMask.String));
++            ipv4netmasks[address] = mask;
++        }
++    }
++    if (pAdapter != staticBuf)
++        free(pAdapter);
++}
++
+ static QList<QNetworkInterfacePrivate *> interfaceListing()
+ {
+     QList<QNetworkInterfacePrivate *> interfaces;
+@@ -135,19 +207,21 @@ static QList<QNetworkInterfacePrivate *>
+         return interfaces;
+     }
+ 
++    QHash<QHostAddress, QHostAddress> ipv4netmasks;
++    if (QOperatingSystemVersion::current() < QOperatingSystemVersion::WindowsVista)
++        getIpv4NetMasks(ipv4netmasks);
++
+     // iterate over the list and add the entries to our listing
+     for (PIP_ADAPTER_ADDRESSES ptr = pAdapter; ptr; ptr = ptr->Next) {
+         // the structure grows over time, so let's make sure the fields
+         // introduced in Windows Vista are present (Luid is the furthest
+         // field we access from IP_ADAPTER_ADDRESSES_LH)
+-        Q_ASSERT(ptr->Length >= offsetof(IP_ADAPTER_ADDRESSES, Luid));
+-        Q_ASSERT(ptr->Length >= offsetof(IP_ADAPTER_ADDRESSES, Ipv6IfIndex));
+ 
+         QNetworkInterfacePrivate *iface = new QNetworkInterfacePrivate;
+         interfaces << iface;
+ 
+         iface->index = 0;
+-        if (ptr->Ipv6IfIndex != 0)
++        if (ptr->Length >= offsetof(IP_ADAPTER_ADDRESSES, Ipv6IfIndex) && ptr->Ipv6IfIndex != 0)
+             iface->index = ptr->Ipv6IfIndex;
+         else if (ptr->IfIndex != 0)
+             iface->index = ptr->IfIndex;
+@@ -203,7 +277,8 @@ static QList<QNetworkInterfacePrivate *>
+         // use ConvertInterfaceLuidToNameW because that returns a friendlier name, though not
+         // as "friendly" as FriendlyName below
+         WCHAR buf[IF_MAX_STRING_SIZE + 1];
+-        if (ConvertInterfaceLuidToNameW(&ptr->Luid, buf, sizeof(buf)/sizeof(buf[0])) == NO_ERROR)
++        if (pConvertInterfaceLuidToName && ptr->Length >= offsetof(IP_ADAPTER_ADDRESSES, Luid) &&
++            pConvertInterfaceLuidToName(&ptr->Luid, buf, sizeof(buf)/sizeof(buf[0])) == NO_ERROR)
+             iface->name = QString::fromWCharArray(buf);
+         if (iface->name.isEmpty())
+             iface->name = QString::fromLocal8Bit(ptr->AdapterName);
+@@ -213,17 +288,29 @@ static QList<QNetworkInterfacePrivate *>
+             iface->hardwareAddress = iface->makeHwAddress(ptr->PhysicalAddressLength,
+                                                           ptr->PhysicalAddress);
+ 
++        PIP_ADAPTER_PREFIX pprefix = 0;
++        if (ptr->Length >= offsetof(IP_ADAPTER_ADDRESSES, FirstPrefix))
++            pprefix = ptr->FirstPrefix;
+         // parse the IP (unicast) addresses
+-        for (PIP_ADAPTER_UNICAST_ADDRESS addr = ptr->FirstUnicastAddress; addr; addr = addr->Next) {
+-            Q_ASSERT(addr->Length >= offsetof(IP_ADAPTER_UNICAST_ADDRESS, OnLinkPrefixLength));
+-
++        for (PIP_ADAPTER_UNICAST_ADDRESS addr = ptr->FirstUnicastAddress; addr; addr = addr->Next)
++        {
+             // skip addresses in invalid state
+             if (addr->DadState == IpDadStateInvalid)
+                 continue;
+ 
+             QNetworkAddressEntry entry;
+             entry.setIp(addressFromSockaddr(addr->Address.lpSockaddr));
+-            entry.setPrefixLength(addr->OnLinkPrefixLength);
++
++            if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::WindowsVista)
++                entry.setPrefixLength(addr->OnLinkPrefixLength);
++            else if (pprefix)
++            {
++                if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol)
++                    entry.setNetmask(ipv4netmasks[entry.ip()]); // broadcast address is set on postProcess()
++                else // IPV6
++                    entry.setPrefixLength(pprefix->PrefixLength);
++                pprefix = pprefix->Next ? pprefix->Next : pprefix;
++            }
+ 
+             auto toDeadline = [](ULONG lifetime) -> QDeadlineTimer {
+                 if (lifetime == 0xffffffffUL)
+@@ -247,6 +334,7 @@ static QList<QNetworkInterfacePrivate *>
+ 
+ QList<QNetworkInterfacePrivate *> QNetworkInterfaceManager::scan()
+ {
++    resolveLibs();
+     return interfaceListing();
+ }
+ 
 diff -aupr 5.15.16-orig/qtbase/src/network/socket/qnativesocketengine_win.cpp 5.15.16/qtbase/src/network/socket/qnativesocketengine_win.cpp
 --- 5.15.16-orig/qtbase/src/network/socket/qnativesocketengine_win.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/network/socket/qnativesocketengine_win.cpp	1970-01-01 00:00:00 +0000
