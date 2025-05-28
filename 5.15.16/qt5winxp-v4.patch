@@ -1,4 +1,4 @@
-diff -aupr 5.15.16-orig/qtbase/src/corelib/global/qoperatingsystemversion.cpp 5.15.16/qtbase/src/corelib/global/qoperatingsystemversion.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/global/qoperatingsystemversion.cpp 5.15.16/qtbase/src/corelib/global/qoperatingsystemversion.cpp
 --- 5.15.16-orig/qtbase/src/corelib/global/qoperatingsystemversion.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/global/qoperatingsystemversion.cpp	1970-01-01 00:00:00 +0000
 @@ -362,6 +362,20 @@ bool QOperatingSystemVersion::isAnyOfTyp
@@ -22,7 +22,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/global/qoperatingsystemversion.cpp 5.
      \variable QOperatingSystemVersion::Windows7
      \brief a version corresponding to Windows 7 (version 6.1).
      \since 5.9
-diff -aupr 5.15.16-orig/qtbase/src/corelib/global/qoperatingsystemversion.h 5.15.16/qtbase/src/corelib/global/qoperatingsystemversion.h
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/global/qoperatingsystemversion.h 5.15.16/qtbase/src/corelib/global/qoperatingsystemversion.h
 --- 5.15.16-orig/qtbase/src/corelib/global/qoperatingsystemversion.h	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/global/qoperatingsystemversion.h	1970-01-01 00:00:00 +0000
 @@ -60,6 +60,8 @@ public:
@@ -51,7 +51,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/global/qoperatingsystemversion.h 5.15
  };
  Q_DECLARE_TYPEINFO(QOperatingSystemVersion, QT_VERSION < QT_VERSION_CHECK(6, 0, 0) ? Q_RELOCATABLE_TYPE : Q_PRIMITIVE_TYPE);
  
-diff -aupr 5.15.16-orig/qtbase/src/corelib/io/qfilesystemengine_win.cpp 5.15.16/qtbase/src/corelib/io/qfilesystemengine_win.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/io/qfilesystemengine_win.cpp 5.15.16/qtbase/src/corelib/io/qfilesystemengine_win.cpp
 --- 5.15.16-orig/qtbase/src/corelib/io/qfilesystemengine_win.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/io/qfilesystemengine_win.cpp	1970-01-01 00:00:00 +0000
 @@ -156,6 +156,11 @@ typedef struct _REPARSE_DATA_BUFFER {
@@ -137,7 +137,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/io/qfilesystemengine_win.cpp 5.15.16/
          if (!deleteItem)
              return false;
          sink = new FileOperationProgressSink;
-diff -aupr 5.15.16-orig/qtbase/src/corelib/io/qprocess_win.cpp 5.15.16/qtbase/src/corelib/io/qprocess_win.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/io/qprocess_win.cpp 5.15.16/qtbase/src/corelib/io/qprocess_win.cpp
 --- 5.15.16-orig/qtbase/src/corelib/io/qprocess_win.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/io/qprocess_win.cpp	1970-01-01 00:00:00 +0000
 @@ -53,6 +53,7 @@
@@ -160,7 +160,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/io/qprocess_win.cpp 5.15.16/qtbase/sr
          hServer = CreateNamedPipe(pipeName,
                                    dwOpenMode,
                                    dwPipeFlags,
-diff -aupr 5.15.16-orig/qtbase/src/corelib/io/qsettings.cpp 5.15.16/qtbase/src/corelib/io/qsettings.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/io/qsettings.cpp 5.15.16/qtbase/src/corelib/io/qsettings.cpp
 --- 5.15.16-orig/qtbase/src/corelib/io/qsettings.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/io/qsettings.cpp	1970-01-01 00:00:00 +0000
 @@ -83,6 +83,8 @@
@@ -244,7 +244,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/io/qsettings.cpp 5.15.16/qtbase/src/c
  #  endif
          pathHash->insert(pathHashKey(QSettings::IniFormat, QSettings::UserScope),
                           Path(roamingAppDataFolder + QDir::separator(), false));
-diff -aupr 5.15.16-orig/qtbase/src/corelib/io/qwindowspipereader.cpp 5.15.16/qtbase/src/corelib/io/qwindowspipereader.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/io/qwindowspipereader.cpp 5.15.16/qtbase/src/corelib/io/qwindowspipereader.cpp
 --- 5.15.16-orig/qtbase/src/corelib/io/qwindowspipereader.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/io/qwindowspipereader.cpp	1970-01-01 00:00:00 +0000
 @@ -72,6 +72,21 @@ QWindowsPipeReader::QWindowsPipeReader(Q
@@ -282,7 +282,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/io/qwindowspipereader.cpp 5.15.16/qtb
                                handle);
              }
          }
-diff -aupr 5.15.16-orig/qtbase/src/corelib/io/qwindowspipewriter.cpp 5.15.16/qtbase/src/corelib/io/qwindowspipewriter.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/io/qwindowspipewriter.cpp 5.15.16/qtbase/src/corelib/io/qwindowspipewriter.cpp
 --- 5.15.16-orig/qtbase/src/corelib/io/qwindowspipewriter.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/io/qwindowspipewriter.cpp	1970-01-01 00:00:00 +0000
 @@ -43,6 +43,8 @@
@@ -307,7 +307,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/io/qwindowspipewriter.cpp 5.15.16/qtb
                                handle);
              }
          }
-diff -aupr 5.15.16-orig/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp 5.15.16/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp 5.15.16/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp
 --- 5.15.16-orig/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp	1970-01-01 00:00:00 +0000
 @@ -41,6 +41,10 @@
@@ -354,7 +354,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/kernel/qelapsedtimer_win.cpp 5.15.16/
  }
  
  quint64 qt_msectime()
-diff -aupr 5.15.16-orig/qtbase/src/corelib/text/qcollator_p.h 5.15.16/qtbase/src/corelib/text/qcollator_p.h
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/text/qcollator_p.h 5.15.16/qtbase/src/corelib/text/qcollator_p.h
 --- 5.15.16-orig/qtbase/src/corelib/text/qcollator_p.h	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/text/qcollator_p.h	1970-01-01 00:00:00 +0000
 @@ -79,9 +79,6 @@ const CollatorType NoCollator = 0;
@@ -391,7 +391,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/text/qcollator_p.h 5.15.16/qtbase/src
          cleanup();
          collator = NoCollator;
      }
-diff -aupr 5.15.16-orig/qtbase/src/corelib/text/qcollator_win.cpp 5.15.16/qtbase/src/corelib/text/qcollator_win.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/text/qcollator_win.cpp 5.15.16/qtbase/src/corelib/text/qcollator_win.cpp
 --- 5.15.16-orig/qtbase/src/corelib/text/qcollator_win.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/text/qcollator_win.cpp	1970-01-01 00:00:00 +0000
 @@ -41,11 +41,12 @@
@@ -412,8 +412,8 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/text/qcollator_win.cpp 5.15.16/qtbase
  // implemented in qlocale_win.cpp
  extern LCID qt_inIsoNametoLCID(const char *name);
  
-+typedef int (*fnCompareStringEx)(const WCHAR*, DWORD, const WCHAR*, int, const WCHAR*, int, LPNLSVERSIONINFO, void*, LPARAM);
-+typedef int (*fnLCMapStringEx)(const WCHAR*, DWORD, const WCHAR*, int, WCHAR*, int, LPNLSVERSIONINFO, void*, LPARAM);
++typedef int (WINAPI *fnCompareStringEx)(const WCHAR*, DWORD, const WCHAR*, int, const WCHAR*, int, LPNLSVERSIONINFO, void*, LPARAM);
++typedef int (WINAPI *fnLCMapStringEx)(const WCHAR*, DWORD, const WCHAR*, int, WCHAR*, int, LPNLSVERSIONINFO, void*, LPARAM);
 +
 +static fnCompareStringEx pCompareStringEx;
 +static fnLCMapStringEx pLCMapStringEx;
@@ -557,7 +557,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/text/qcollator_win.cpp 5.15.16/qtbase
      return QCollatorSortKey(new QCollatorSortKeyPrivate(std::move(ret)));
  }
  
-diff -aupr 5.15.16-orig/qtbase/src/corelib/text/qlocale_win.cpp 5.15.16/qtbase/src/corelib/text/qlocale_win.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/text/qlocale_win.cpp 5.15.16/qtbase/src/corelib/text/qlocale_win.cpp
 --- 5.15.16-orig/qtbase/src/corelib/text/qlocale_win.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/text/qlocale_win.cpp	1970-01-01 00:00:00 +0000
 @@ -60,6 +60,8 @@
@@ -660,7 +660,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/text/qlocale_win.cpp 5.15.16/qtbase/s
  #else // !Q_OS_WINRT
      QStringList result;
  
-diff -aupr 5.15.16-orig/qtbase/src/corelib/text/qstring.cpp 5.15.16/qtbase/src/corelib/text/qstring.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/corelib/text/qstring.cpp 5.15.16/qtbase/src/corelib/text/qstring.cpp
 --- 5.15.16-orig/qtbase/src/corelib/text/qstring.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/corelib/text/qstring.cpp	1970-01-01 00:00:00 +0000
 @@ -6550,7 +6550,7 @@ int QString::localeAwareCompare_helper(c
@@ -672,7 +672,7 @@ diff -aupr 5.15.16-orig/qtbase/src/corelib/text/qstring.cpp 5.15.16/qtbase/src/c
  
      switch (res) {
      case CSTR_LESS_THAN:
-diff -aupr 5.15.16-orig/qtbase/src/gui/rhi/qrhid3d11.cpp 5.15.16/qtbase/src/gui/rhi/qrhid3d11.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/gui/rhi/qrhid3d11.cpp 5.15.16/qtbase/src/gui/rhi/qrhid3d11.cpp
 --- 5.15.16-orig/qtbase/src/gui/rhi/qrhid3d11.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/gui/rhi/qrhid3d11.cpp	1970-01-01 00:00:00 +0000
 @@ -167,18 +167,22 @@ inline Int aligned(Int v, Int byteAlign)
@@ -767,7 +767,7 @@ diff -aupr 5.15.16-orig/qtbase/src/gui/rhi/qrhid3d11.cpp 5.15.16/qtbase/src/gui/
          }
          if (SUCCEEDED(ctx->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void **>(&context)))) {
              ctx->Release();
-diff -aupr 5.15.16-orig/qtbase/src/network/kernel/qnetconmonitor_win.cpp 5.15.16/qtbase/src/network/kernel/qnetconmonitor_win.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/network/kernel/qnetconmonitor_win.cpp 5.15.16/qtbase/src/network/kernel/qnetconmonitor_win.cpp
 --- 5.15.16-orig/qtbase/src/network/kernel/qnetconmonitor_win.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/network/kernel/qnetconmonitor_win.cpp	1970-01-01 00:00:00 +0000
 @@ -61,6 +61,27 @@ QT_BEGIN_NAMESPACE
@@ -818,7 +818,7 @@ diff -aupr 5.15.16-orig/qtbase/src/network/kernel/qnetconmonitor_win.cpp 5.15.16
          qCWarning(lcNetMon, "Could not get the GUID for the interface.");
          return false;
      }
-diff -aupr 5.15.16-orig/qtbase/src/network/kernel/qnetworkinterface_win.cpp 5.15.16/qtbase/src/network/kernel/qnetworkinterface_win.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/network/kernel/qnetworkinterface_win.cpp 5.15.16/qtbase/src/network/kernel/qnetworkinterface_win.cpp
 --- 5.15.16-orig/qtbase/src/network/kernel/qnetworkinterface_win.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/network/kernel/qnetworkinterface_win.cpp	1970-01-01 00:00:00 +0000
 @@ -48,6 +48,7 @@
@@ -1020,7 +1020,7 @@ diff -aupr 5.15.16-orig/qtbase/src/network/kernel/qnetworkinterface_win.cpp 5.15
      return interfaceListing();
  }
  
-diff -aupr 5.15.16-orig/qtbase/src/network/socket/qnativesocketengine_win.cpp 5.15.16/qtbase/src/network/socket/qnativesocketengine_win.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/network/socket/qnativesocketengine_win.cpp 5.15.16/qtbase/src/network/socket/qnativesocketengine_win.cpp
 --- 5.15.16-orig/qtbase/src/network/socket/qnativesocketengine_win.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/network/socket/qnativesocketengine_win.cpp	1970-01-01 00:00:00 +0000
 @@ -499,7 +499,9 @@ bool QNativeSocketEnginePrivate::setOpti
@@ -1042,7 +1042,159 @@ diff -aupr 5.15.16-orig/qtbase/src/network/socket/qnativesocketengine_win.cpp 5.
          }
      case QNativeSocketEngine::TypeOfServiceOption:
      case QNativeSocketEngine::MaxStreamsSocketOption:
-diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsbackingstore.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsbackingstore.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/bearer/generic/generic.pro 5.15.16/qtbase/src/plugins/bearer/generic/generic.pro
+--- 5.15.16-orig/qtbase/src/plugins/bearer/generic/generic.pro	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtbase/src/plugins/bearer/generic/generic.pro	1970-01-01 00:00:00 +0000
+@@ -12,8 +12,6 @@ SOURCES += qgenericengine.cpp \
+ 
+ OTHER_FILES += generic.json
+ 
+-win32:!winrt:LIBS += -liphlpapi
+-
+ PLUGIN_TYPE = bearer
+ PLUGIN_CLASS_NAME = QGenericEnginePlugin
+ load(qt_plugin)
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/bearer/generic/qgenericengine.cpp 5.15.16/qtbase/src/plugins/bearer/generic/qgenericengine.cpp
+--- 5.15.16-orig/qtbase/src/plugins/bearer/generic/qgenericengine.cpp	1970-01-01 00:00:00 +0000
++++ 5.15.16/qtbase/src/plugins/bearer/generic/qgenericengine.cpp	1970-01-01 00:00:00 +0000
+@@ -53,7 +53,7 @@
+ #include <QtCore/qdebug.h>
+ #include <QtCore/private/qcoreapplication_p.h>
+ 
+-#if defined(Q_OS_WIN32)
++#ifdef Q_OS_WIN32
+ // PMIB_TCPTABLE2 is only available since Vista
+ #if _WIN32_WINNT < 0x0601
+ #  undef _WIN32_WINNT
+@@ -61,6 +61,22 @@
+ #endif // _WIN32_WINNT < 0x0601
+ #include "../platformdefs_win.h"
+ #include <iphlpapi.h>
++
++typedef NETIO_STATUS (WINAPI *PtrConvertInterfaceNameToLuid)(const WCHAR *, PNET_LUID);
++static PtrConvertInterfaceNameToLuid pConvertInterfaceNameToLuid = 0;
++
++static void resolveLibs()
++{
++    // try to find the functions we need from Iphlpapi.dll
++    static bool done = false;
++    if (!done)
++    {
++        HINSTANCE hMod = GetModuleHandleW(L"iphlpapi");
++        if (hMod)
++            pConvertInterfaceNameToLuid = (PtrConvertInterfaceNameToLuid) GetProcAddress(hMod, "ConvertInterfaceNameToLuidW");
++        done = true;
++    }
++}
+ #endif
+ 
+ #ifdef Q_OS_WINRT
+@@ -102,31 +118,84 @@ static QNetworkConfiguration::BearerType
+     if (buf.size() == 0)
+         return QNetworkConfiguration::BearerUnknown;
+ 
+-    NET_LUID luid;
+-    NETIO_STATUS status = ConvertInterfaceNameToLuidW(buf.c_str(), &luid);
+-    if (status != NO_ERROR)
+-        return QNetworkConfiguration::BearerUnknown;
++    resolveLibs();
++    if (pConvertInterfaceNameToLuid)
++    {
++        NET_LUID luid;
++        NETIO_STATUS status = pConvertInterfaceNameToLuid(buf.c_str(), &luid);
++        if (status != NO_ERROR)
++            return QNetworkConfiguration::BearerUnknown;
+ 
+-    switch (luid.Info.IfType) {
+-    case IF_TYPE_ETHERNET_CSMACD:
+-    case IF_TYPE_ISO88025_TOKENRING:
+-    case IF_TYPE_PPP:
+-    case IF_TYPE_SOFTWARE_LOOPBACK:
+-        return QNetworkConfiguration::BearerEthernet;
+-    case IF_TYPE_IEEE80211:
+-        return QNetworkConfiguration::BearerWLAN;
+-    case IF_TYPE_ATM:
+-    case IF_TYPE_IEEE1394:
+-    case IF_TYPE_OTHER:
+-    case IF_TYPE_TUNNEL:
+-        return QNetworkConfiguration::BearerUnknown;
+-    default:
++        switch (luid.Info.IfType)
++        {
++            case IF_TYPE_ETHERNET_CSMACD:
++            case IF_TYPE_ISO88025_TOKENRING:
++            case IF_TYPE_PPP:
++            case IF_TYPE_SOFTWARE_LOOPBACK:
++                return QNetworkConfiguration::BearerEthernet;
++            case IF_TYPE_IEEE80211:
++                return QNetworkConfiguration::BearerWLAN;
++            case IF_TYPE_ATM:
++            case IF_TYPE_IEEE1394:
++            case IF_TYPE_OTHER:
++            case IF_TYPE_TUNNEL:
++                return QNetworkConfiguration::BearerUnknown;
++            default:
+ #ifdef BEARER_MANAGEMENT_DEBUG
+-        qDebug() << "Interface Type" << luid.Info.IfType;
++                qDebug() << "Interface Type" << luid.Info.IfType;
+ #endif
++                return QNetworkConfiguration::BearerUnknown;
++        }
+         return QNetworkConfiguration::BearerUnknown;
+     }
+-    return QNetworkConfiguration::BearerUnknown;
++
++    QNetworkConfiguration::BearerType resType = QNetworkConfiguration::BearerUnknown;
++    buf.insert(0, L"\\\\.\\");
++#ifdef BEARER_MANAGEMENT_DEBUG
++    qDebug() << "Opening file" << QString::fromUtf16((const ushort *) buf.c_str());
++#endif
++    HANDLE handle = CreateFileW(buf.c_str(), 0, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
++    if (handle != INVALID_HANDLE_VALUE)
++    {
++        DWORD oid = OID_GEN_MEDIA_SUPPORTED;
++        DWORD bytesWritten = 0;
++        NDIS_MEDIUM medium;
++        BOOL result = DeviceIoControl(handle, IOCTL_NDIS_QUERY_GLOBAL_STATS, &oid, sizeof(oid),
++                                      &medium, sizeof(medium), &bytesWritten, 0);
++#ifdef BEARER_MANAGEMENT_DEBUG
++        if (result)
++            qDebug() << "NDIS_MEDIUM:" << medium;
++#endif
++        if (result && medium == NdisMedium802_3)
++        {
++            resType = QNetworkConfiguration::BearerEthernet;
++            NDIS_PHYSICAL_MEDIUM physicalMedium;
++            oid = OID_GEN_PHYSICAL_MEDIUM;
++            bytesWritten = 0;
++            result = DeviceIoControl(handle, IOCTL_NDIS_QUERY_GLOBAL_STATS, &oid, sizeof(oid),
++                                     &physicalMedium, sizeof(physicalMedium), &bytesWritten, 0);
++            if (result)
++            {
++#ifdef BEARER_MANAGEMENT_DEBUG
++                qDebug() << "NDIS_PHYSICAL_MEDIUM:" << physicalMedium;
++#endif
++                switch (physicalMedium)
++                {
++                    case NdisPhysicalMediumWirelessLan:
++                        resType = QNetworkConfiguration::BearerWLAN;
++                        break;
++                    case NdisPhysicalMediumBluetooth:
++                        resType = QNetworkConfiguration::BearerBluetooth;
++                        break;
++                    case NdisPhysicalMediumWiMax:
++                        resType = QNetworkConfiguration::BearerWiMAX;
++                        break;
++                }
++            }
++        }
++        CloseHandle(handle);
++    }
++    return resType;
+ 
+ #elif defined(Q_OS_LINUX)
+     int sock = socket(AF_INET, SOCK_DGRAM, 0);
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsbackingstore.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsbackingstore.cpp
 --- 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsbackingstore.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsbackingstore.cpp	1970-01-01 00:00:00 +0000
 @@ -98,16 +98,20 @@ void QWindowsBackingStore::flush(QWindow
@@ -1076,7 +1228,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsbackingstor
      } else {
          const HDC dc = rw->getDC();
          if (!dc) {
-diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
 --- 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp	1970-01-01 00:00:00 +0000
 @@ -77,7 +77,6 @@
@@ -1209,7 +1361,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
      return systemParametersInfo(SPI_GETNONCLIENTMETRICS, ncm->cbSize, ncm, dpi);
  }
  
-diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.h 5.15.16/qtbase/src/plugins/platforms/windows/qwindowscontext.h
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.h 5.15.16/qtbase/src/plugins/platforms/windows/qwindowscontext.h
 --- 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.h	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/platforms/windows/qwindowscontext.h	1970-01-01 00:00:00 +0000
 @@ -85,8 +85,22 @@ class QTouchDevice;
@@ -1286,7 +1438,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowscontext.h 5
      static QWindowsShcoreDLL shcoredll;
  
      static QByteArray comErrorString(HRESULT hr);
-diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpers.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpers.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpers.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpers.cpp
 --- 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpers.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpers.cpp	1970-01-01 00:00:00 +0000
 @@ -896,18 +896,20 @@ void QWindowsNativeFileDialogBase::setWi
@@ -1329,7 +1481,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsdialoghelpe
          CoTaskMemFree(idList);
          if (FAILED(hr)) {
              qErrnoWarning("%s: SHCreateItemFromIDList(%s)) failed", __FUNCTION__, qPrintable(url.toString()));
-diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp
 --- 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp	1970-01-01 00:00:00 +0000
 @@ -78,6 +78,7 @@
@@ -1350,7 +1502,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsintegration
      return options;
  }
  
-diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsmousehandler.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsmousehandler.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsmousehandler.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsmousehandler.cpp
 --- 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsmousehandler.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/platforms/windows/qwindowsmousehandler.cpp	1970-01-01 00:00:00 +0000
 @@ -636,7 +636,7 @@ bool QWindowsMouseHandler::translateTouc
@@ -1371,7 +1523,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowsmousehandle
  
      // all touch points released, forget the ids we've seen, they may not be reused
      if (allStates == Qt::TouchPointReleased)
-diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp
 --- 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp	1970-01-01 00:00:00 +0000
 @@ -64,6 +64,7 @@
@@ -1644,7 +1796,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayi
              const auto &screenManager = QWindowsContext::instance()->screenManager();
              const QPlatformScreen *screen = screenManager.screenAtDp(globalPos);
              if (!screen)
-diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.h 5.15.16/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.h
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.h 5.15.16/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.h
 --- 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.h	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.h	1970-01-01 00:00:00 +0000
 @@ -94,6 +94,8 @@ private:
@@ -1656,7 +1808,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowssystemtrayi
  };
  
  #ifndef QT_NO_DEBUG_STREAM
-diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp
 --- 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp	1970-01-01 00:00:00 +0000
 @@ -65,7 +65,6 @@
@@ -1714,7 +1866,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowstheme.cpp 5
      if (hr != S_OK)
          return result;
      HICON hIcon;
-diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp 5.15.16/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
 --- 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp	1970-01-01 00:00:00 +0000
 @@ -79,6 +79,7 @@
@@ -1851,7 +2003,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp 
              setFlag(TouchRegistered);
          else
              qErrnoWarning("RegisterTouchWindow() failed for window '%s'.", qPrintable(window()->objectName()));
-diff -aupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/main.cpp 5.15.16/qtbase/src/plugins/styles/windowsvista/main.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/main.cpp 5.15.16/qtbase/src/plugins/styles/windowsvista/main.cpp
 --- 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/main.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/styles/windowsvista/main.cpp	1970-01-01 00:00:00 +0000
 @@ -40,6 +40,7 @@
@@ -1872,7 +2024,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/main.cpp 5.15.16/
      return nullptr;
  }
  
-diff -aupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp 5.15.16/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp 5.15.16/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp
 --- 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp	1970-01-01 00:00:00 +0000
 @@ -83,7 +83,9 @@ static const int windowsRightBorder     
@@ -1904,7 +2056,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyl
                      t->setDuration(int(duration));
                  else
                      t->setDuration(0);
-diff -aupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp 5.15.16/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp 5.15.16/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp
 --- 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp	1970-01-01 00:00:00 +0000
 @@ -42,6 +42,7 @@
@@ -2370,7 +2522,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.c
          if (origin != PO_NOTFOUND)
          {
              showProperty(themeData, prop);
-diff -aupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h 5.15.16/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h 5.15.16/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h
 --- 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h	1970-01-01 00:00:00 +0000
 @@ -189,7 +189,66 @@ QDebug operator<<(QDebug d, const ThemeM
@@ -2441,7 +2593,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p
  {
      Q_DECLARE_PUBLIC(QWindowsXPStyle)
  public:
-diff -aupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/windowsvistastyle.json 5.15.16/qtbase/src/plugins/styles/windowsvista/windowsvistastyle.json
+diff -Naupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/windowsvistastyle.json 5.15.16/qtbase/src/plugins/styles/windowsvista/windowsvistastyle.json
 --- 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/windowsvistastyle.json	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/plugins/styles/windowsvista/windowsvistastyle.json	1970-01-01 00:00:00 +0000
 @@ -1,3 +1,3 @@
@@ -2449,7 +2601,7 @@ diff -aupr 5.15.16-orig/qtbase/src/plugins/styles/windowsvista/windowsvistastyle
 -    "Keys": [ "windowsvista" ]
 +    "Keys": [ "windowsvista", "windowsxp" ]
  }
-diff -aupr 5.15.16-orig/qtbase/src/widgets/dialogs/qfiledialog.cpp 5.15.16/qtbase/src/widgets/dialogs/qfiledialog.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/widgets/dialogs/qfiledialog.cpp 5.15.16/qtbase/src/widgets/dialogs/qfiledialog.cpp
 --- 5.15.16-orig/qtbase/src/widgets/dialogs/qfiledialog.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/widgets/dialogs/qfiledialog.cpp	1970-01-01 00:00:00 +0000
 @@ -727,8 +727,6 @@ bool QFileDialogPrivate::canBeNativeDial
@@ -2461,7 +2613,7 @@ diff -aupr 5.15.16-orig/qtbase/src/widgets/dialogs/qfiledialog.cpp 5.15.16/qtbas
      if (QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs)
          || q->testAttribute(Qt::WA_DontShowOnScreen)
          || (options->options() & QFileDialog::DontUseNativeDialog)) {
-diff -aupr 5.15.16-orig/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp 5.15.16/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp 5.15.16/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp
 --- 5.15.16-orig/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp	1970-01-01 00:00:00 +0000
 @@ -59,11 +59,18 @@
@@ -2511,7 +2663,7 @@ diff -aupr 5.15.16-orig/qtbase/src/widgets/dialogs/qfilesystemmodel.cpp 5.15.16/
      if (FAILED(hr))
          return QString();
      LPWSTR name = nullptr;
-diff -aupr 5.15.16-orig/qtbase/src/widgets/dialogs/qwizard_win.cpp 5.15.16/qtbase/src/widgets/dialogs/qwizard_win.cpp
+diff -Naupr 5.15.16-orig/qtbase/src/widgets/dialogs/qwizard_win.cpp 5.15.16/qtbase/src/widgets/dialogs/qwizard_win.cpp
 --- 5.15.16-orig/qtbase/src/widgets/dialogs/qwizard_win.cpp	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/widgets/dialogs/qwizard_win.cpp	1970-01-01 00:00:00 +0000
 @@ -42,6 +42,7 @@
@@ -2799,7 +2951,7 @@ diff -aupr 5.15.16-orig/qtbase/src/widgets/dialogs/qwizard_win.cpp 5.15.16/qtbas
  QT_END_NAMESPACE
  
  #endif // style_windowsvista
-diff -aupr 5.15.16-orig/qtbase/src/widgets/dialogs/qwizard_win_p.h 5.15.16/qtbase/src/widgets/dialogs/qwizard_win_p.h
+diff -Naupr 5.15.16-orig/qtbase/src/widgets/dialogs/qwizard_win_p.h 5.15.16/qtbase/src/widgets/dialogs/qwizard_win_p.h
 --- 5.15.16-orig/qtbase/src/widgets/dialogs/qwizard_win_p.h	1970-01-01 00:00:00 +0000
 +++ 5.15.16/qtbase/src/widgets/dialogs/qwizard_win_p.h	1970-01-01 00:00:00 +0000
 @@ -133,6 +133,7 @@ private:
