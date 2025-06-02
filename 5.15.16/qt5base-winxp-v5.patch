@@ -119,7 +119,7 @@ diff -Naupr 5.15.16-orig/qtbase/src/corelib/io/qfilesystemengine_win.cpp 5.15.16
  #  if defined(__IFileOperation_INTERFACE_DEFINED__)
 +        if (!ptrSHCreateItemFromParsingName) {
 +            ptrSHCreateItemFromParsingName = reinterpret_cast<PtrSHCreateItemFromParsingName>(
-+                QSystemLibrary::resolve(QLatin1String("shell32"), "ShellExecuteExW"));
++                QSystemLibrary::resolve(QLatin1String("shell32"), "SHCreateItemFromParsingName"));
 +            if (!ptrSHCreateItemFromParsingName)
 +                return false;
 +        }
