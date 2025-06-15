@@ -1,0 +1,43 @@
+diff -Naupr 5.15.17-orig/qtbase/configure.json 5.15.17/qtbase/configure.json
+--- 5.15.17-orig/qtbase/configure.json	1970-01-01 00:00:00 +0000
++++ 5.15.17/qtbase/configure.json	1970-01-01 00:00:00 +0000
+@@ -118,6 +118,7 @@
+             "reduce-relocations": { "type": "boolean", "name": "reduce_relocations" },
+             "release": { "type": "enum", "name": "debug", "values": { "yes": "no", "no": "yes" } },
+             "rpath": "boolean",
++            "rtti": "boolean",
+             "sanitize": "sanitize",
+             "sdk": "string",
+             "separate-debug-info": { "type": "boolean", "name": "separate_debug_info" },
+@@ -865,6 +866,12 @@
+             "autoDetect": false,
+             "output": [ { "type": "varAppend", "name": "EXTRA_RPATHS", "value": "input.rpaths" } ]
+         },
++        "rtti": {
++            "label": "Build with RTTI",
++            "comment": "mkspecs/features/win32/default_pre.prf sets no-rtti. Follow default behavior of configure.exe by overriding with rtti.",
++            "condition": "config.win32",
++            "output": [ "publicConfig" ]
++        },
+         "force_asserts": {
+             "label": "Force assertions",
+             "autoDetect": false,
+diff -Naupr 5.15.17-orig/qtbase/mkspecs/common/msvc-desktop.conf 5.15.17/qtbase/mkspecs/common/msvc-desktop.conf
+--- 5.15.17-orig/qtbase/mkspecs/common/msvc-desktop.conf	1970-01-01 00:00:00 +0000
++++ 5.15.17/qtbase/mkspecs/common/msvc-desktop.conf	1970-01-01 00:00:00 +0000
+@@ -70,7 +70,7 @@ QMAKE_CXXFLAGS_LTCG     = $$QMAKE_CFLAGS
+ QMAKE_CXXFLAGS_STL_ON   = -EHsc
+ QMAKE_CXXFLAGS_STL_OFF  =
+ QMAKE_CXXFLAGS_RTTI_ON  = -GR
+-QMAKE_CXXFLAGS_RTTI_OFF =
++QMAKE_CXXFLAGS_RTTI_OFF = -GR-
+ QMAKE_CXXFLAGS_EXCEPTIONS_ON = -EHsc
+ QMAKE_CXXFLAGS_EXCEPTIONS_OFF =
+ 
+diff -Naupr 5.15.17-orig/qtbase/mkspecs/features/win32/default_pre.prf 5.15.17/qtbase/mkspecs/features/win32/default_pre.prf
+--- 5.15.17-orig/qtbase/mkspecs/features/win32/default_pre.prf	1970-01-01 00:00:00 +0000
++++ 5.15.17/qtbase/mkspecs/features/win32/default_pre.prf	1970-01-01 00:00:00 +0000
+@@ -1,2 +1,2 @@
+-CONFIG = windows $$CONFIG
++CONFIG = rtti_off windows $$CONFIG
+ load(default_pre)

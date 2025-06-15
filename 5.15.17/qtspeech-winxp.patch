@@ -1,0 +1,23 @@
+diff --git a/qtspeech/src/plugins/tts/sapi/qtexttospeech_sapi.cpp b/qtspeech/src/plugins/tts/sapi/qtexttospeech_sapi.cpp
+--- a/qtspeech/src/plugins/tts/sapi/qtexttospeech_sapi.cpp
++++ b/qtspeech/src/plugins/tts/sapi/qtexttospeech_sapi.cpp
+@@ -37,7 +37,6 @@
+ #include "qtexttospeech_sapi.h"
+ 
+ #include <windows.h>
+-#include <sapi.h>
+ #include <sphelper.h>
+ #include <qdebug.h>
+ 
+diff --git a/qtspeech/src/plugins/tts/sapi/qtexttospeech_sapi.h b/qtspeech/src/plugins/tts/sapi/qtexttospeech_sapi.h
+--- a/qtspeech/src/plugins/tts/sapi/qtexttospeech_sapi.h
++++ b/qtspeech/src/plugins/tts/sapi/qtexttospeech_sapi.h
+@@ -38,6 +38,8 @@
+ #define QTEXTTOSPEECHENGINE_SAPI_H
+ 
+ #include <QtCore/qt_windows.h>
++
++#define _ATL_XP_TARGETING
+ #include <sapi.h>
+ 
+ #include <QtCore/qobject.h>
